@@ -1,0 +1,9 @@
+mqtt:
+  broker: "192.168.0.45"
+  port: 1883
+MARTA:
+  mqtt_topic: "/MARTA/#"
+Coldroom:
+  mqtt_topic: "/coldroom/#"
+ThermalCamera:
+  mqtt_topic: "/thermalcamera/#"

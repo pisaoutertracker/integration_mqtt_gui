@@ -7,21 +7,16 @@ import numpy as np
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from .stitching import process_all_cameras
+from .image_stitching import process_all_cameras
 
 
 class ThermalCameraMQTTClient:
-    """MQTT client for controlling a thermal camera system."""
 
-    BROKER = "192.168.0.45"
-    PORT = 1883
-    TOPIC_BASE = "/thermalcamera/#"
+    def __init__(self, system_obj):
+        self._system = system_obj
+        self.TOPIC = system_obj.settings["ThermalCamera"]["mqtt_topic"]
+        self.TOPIC_BASE = self.TOPIC.replace("#", "")
 
-    def __init__(self):
-        self._running = False
-        self._position = 0
-        self._switch_state = False
-        self._streaming = False
         self._stitching_data = {}
         self._images = {f"camera{i}": np.random.rand(32, 24) for i in range(4)}
         self.__init_cameras_pic()
@@ -29,27 +24,23 @@ class ThermalCameraMQTTClient:
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "thermalcam")
         self._client.on_connect = self.on_connect
         self._client.on_message = self.on_message
-        self._client.connect(self.BROKER, self.PORT)
+        self._client.connect(self._system.BROKER, self._system.PORT)
 
     def on_connect(self, client, userdata, flags, rc):
-        self._client.subscribe(self.TOPIC_STATE)
-        self._client.subscribe(self.TOPIC_BASE)
+        self._client.subscribe(self.TOPIC)
 
     def on_message(self, client, userdata, msg):
-        if msg.topic.startswith("thermalcamera/state"):
+        if msg.topic.startswith(f"{self.TOPIC_BASE}/state"):
             self.handle_state_message(msg.payload)
-        elif msg.topic.startswith("thermalcamera/camera"):
+        elif msg.topic.startswith(f"{self.TOPIC_BASE}/camera"):
             self.handle_camera_message(msg.topic, json.loads(msg.payload))
         else:
             pass
 
     def handle_state_message(self, payload):
         """Handle incoming state messages."""
-        state_dict = json.loads(payload)
-        self._running = state_dict["running"]
-        self._position = state_dict["position"]
-        self._switch_state = state_dict["switch_state"]
-        self._streaming = state_dict["streaming"]
+        self._status = json.loads(payload)
+        self._system.update_status({"thermal_camera": self._status})
 
     def handle_camera_message(self, topic, payload):
         camera_name = topic.split("/")[2]
@@ -72,7 +63,7 @@ class ThermalCameraMQTTClient:
         if params is None:
             params = {}
         payload = json.dumps(params)
-        self._client.publish(f"thermalcamera/cmd/{command}", payload)
+        self._client.publish(f"{self.TOPIC_BASE}/cmd/{command}", payload)
 
     ### Commands ###
     def rotate(self, payload):
@@ -132,35 +123,6 @@ class ThermalCameraMQTTClient:
 
     def __stitching(self):
         self._stitched_figures = process_all_cameras(self._stitching_data)
-
-    ### Properties ###
-    @property
-    def running(self):
-        return self._running
-
-    @property
-    def position(self):
-        return self._position
-
-    @property
-    def switch_state(self):
-        return self._switch_state
-
-    @property
-    def streaming(self):
-        return self._streaming
-
-    @property
-    def fig_cameras(self):
-        return self._fig_cameras
-
-    @property
-    def client(self):
-        return self._client
-
-    @property
-    def stitched_figures(self):
-        return self._stitched_figures
 
     ### MQTT Client Loop ###
     def loop_start(self):
