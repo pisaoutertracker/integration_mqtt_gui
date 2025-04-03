@@ -4,10 +4,15 @@ import paho.mqtt.client as mqtt
 import base64
 import time
 import numpy as np
+
+# Set matplotlib backend to Qt5Agg before importing matplotlib components
+import matplotlib
+matplotlib.use('Qt5Agg')
+
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from .image_stitching import process_all_cameras
+from image_stitching import process_all_cameras
 
 
 class ThermalCameraMQTTClient:

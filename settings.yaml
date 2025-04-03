@@ -1,9 +1,12 @@
 mqtt:
-  broker: "192.168.0.45"
+  broker: "pccmslab1"
   port: 1883
 MARTA:
   mqtt_topic: "/MARTA/#"
 Coldroom:
   mqtt_topic: "/coldroom/#"
+  co2_sensor_topic: "/ble/CO2-1"
 ThermalCamera:
   mqtt_topic: "/thermalcamera/#"
+Caen:
+  mqtt_topic: "/caenstatus/full/#"

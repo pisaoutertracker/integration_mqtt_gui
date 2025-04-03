@@ -1,31 +1,91 @@
 import os
 import yaml
-from .thermal_camera import ThermalCameraMQTTClient
-from .marta_coldroom import MartaColdRoomMQTTClient
-from .caen import CaenMQTTClient
+import threading
+import time
+import sys
+import logging
+from thermal_camera import ThermalCameraMQTTClient
+from marta_coldroom import MartaColdRoomMQTTClient
+from caen import CaenMQTTClient
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 class System:
     def __init__(self):
-        # Settings
-        self._settings = {}
-        with open(os.path.join(os.path.dirname(__file__), "settings.yaml"), "r") as f:
-            self.settings = yaml.safe_load(f)
+        logger.info("Initializing System...")
+        # Load settings
+        self._settings = {}  # Initialize private settings variable
+        try:
+            with open(os.path.join(os.path.dirname(__file__), "settings.yaml"), "r") as f:
+                self._settings = yaml.safe_load(f)
+                logger.debug("Settings loaded successfully")
+                logger.debug(f"MQTT Broker: {self._settings['mqtt']['broker']}")
+                logger.debug(f"MQTT Port: {self._settings['mqtt']['port']}")
+        except Exception as e:
+            logger.error(f"Error loading settings: {e}")
+            self._settings = {
+                "mqtt": {"broker": "localhost", "port": 1883},
+                "MARTA": {"mqtt_topic": "/MARTA/#"},
+                "Coldroom": {"mqtt_topic": "/coldroom/#"},
+                "ThermalCamera": {"mqtt_topic": "/thermalcamera/#"},
+                "Caen": {"mqtt_topic": "/caenstatus/full/#"}
+            }
 
         # Global variables
-        self.BROKER = self.settings["mqtt"]["broker"]
-        self.PORT = self.settings["mqtt"]["port"]
-        self._status = {"marta": {}, "coldroom": {}, "thermal_camera": {}}
+        self.BROKER = self._settings["mqtt"]["broker"]
+        self.PORT = self._settings["mqtt"]["port"]
+        self._status = {"marta": {}, "coldroom": {}, "thermal_camera": {}, "caen": {}}
         self.safety_flags = {"door_locked": True, "sleep": True, "hv_safe": False}  # Default value to safest state
 
+        # Thread control
+        self._mqtt_thread = None
+        self._thread_stop = False
+
         # Initialize MQTT clients
-        self._martacoldroom = MartaColdRoomMQTTClient(system=self)
-        self._thermalcamera = ThermalCameraMQTTClient(system=self)
-        self._caen = CaenMQTTClient(system=self)
+        logger.info("Initializing MQTT clients...")
+        try:
+            self._martacoldroom = MartaColdRoomMQTTClient(self)
+            logger.info("MARTA/Coldroom client initialized")
+        except Exception as e:
+            logger.error(f"Error initializing MARTA Coldroom client: {e}")
+            self._martacoldroom = None
+            
+        try:
+            self._thermalcamera = ThermalCameraMQTTClient(self)
+            logger.info("Thermal Camera client initialized")
+        except Exception as e:
+            logger.error(f"Error initializing Thermal Camera client: {e}")
+            self._thermalcamera = None
+            
+        try:
+            self._caen = CaenMQTTClient(self)
+            logger.info("CAEN client initialized")
+        except Exception as e:
+            logger.error(f"Error initializing CAEN client: {e}")
+            self._caen = None
 
     @property
     def settings(self):
+        """Get the current settings"""
         return self._settings
+    
+    @settings.setter
+    def settings(self, value):
+        """Update settings and save to file"""
+        if not isinstance(value, dict):
+            raise ValueError("Settings must be a dictionary")
+        self._settings = value
+        try:
+            with open(os.path.join(os.path.dirname(__file__), "settings.yaml"), "w") as f:
+                yaml.dump(self._settings, f, default_flow_style=False)
+        except Exception as e:
+            logger.error(f"Error saving settings: {e}")
 
     @property
     def status(self):
@@ -35,8 +95,9 @@ class System:
         try:
             assert isinstance(status, dict)
             self._status.update(status)
+            logger.debug(f"Status updated: {status}")
         except AssertionError:
-            pass
+            logger.error("Invalid status update - must be a dictionary")
 
     def has_valid_status(self):
         is_valid = True
@@ -45,3 +106,78 @@ class System:
                 is_valid = False
                 break
         return is_valid
+
+    def start_mqtt_thread(self):
+        """Start MQTT thread to handle client loops"""
+        logger.info("Starting MQTT thread...")
+        if self._mqtt_thread is None or not self._mqtt_thread.is_alive():
+            self._thread_stop = False
+            self._mqtt_thread = threading.Thread(target=self._mqtt_loop)
+            self._mqtt_thread.daemon = True
+            self._mqtt_thread.start()
+            logger.info("MQTT thread started")
+        else:
+            logger.warning("MQTT thread already running")
+
+    def stop_mqtt_thread(self):
+        """Stop MQTT thread"""
+        logger.info("Stopping MQTT thread...")
+        if self._mqtt_thread and self._mqtt_thread.is_alive():
+            self._thread_stop = True
+            self._mqtt_thread.join(timeout=2)
+            logger.info("MQTT thread stopped")
+        else:
+            logger.debug("No MQTT thread running")
+
+    def _mqtt_loop(self):
+        """Main MQTT loop that starts all client loops"""
+        logger.info("Starting MQTT client loops...")
+        try:
+            # Start client loops
+            if self._martacoldroom:
+                logger.debug("Starting MARTA/Coldroom client loops")
+                self._martacoldroom.start_client_loops()
+            
+            if self._thermalcamera:
+                logger.debug("Starting Thermal Camera client loop")
+                self._thermalcamera.loop_start()
+            
+            if self._caen:
+                logger.debug("Starting CAEN client loop")
+                self._caen.start_client_loop()
+            
+            logger.info("All MQTT client loops started")
+            
+            # Keep thread running
+            while not self._thread_stop:
+                time.sleep(1)
+                
+        except Exception as e:
+            logger.error(f"Error in MQTT loop: {e}")
+        finally:
+            logger.info("MQTT loop ending, stopping client loops...")
+
+    def cleanup(self):
+        """Clean up resources"""
+        logger.info("Cleaning up resources...")
+        try:
+            # Stop MQTT thread first
+            self.stop_mqtt_thread()
+            
+            # Stop individual client loops
+            if hasattr(self, '_martacoldroom') and self._martacoldroom:
+                logger.debug("Stopping MARTA/Coldroom client loops")
+                self._martacoldroom.stop_client_loops()
+            
+            if hasattr(self, '_thermalcamera') and self._thermalcamera:
+                logger.debug("Stopping Thermal Camera client loop")
+                self._thermalcamera.loop_start()
+            
+            if hasattr(self, '_caen') and self._caen:
+                logger.debug("Stopping CAEN client loop")
+                self._caen.stop_client_loop()
+                
+            logger.info("All resources cleaned up")
+            
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
