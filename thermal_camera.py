@@ -4,131 +4,189 @@ import paho.mqtt.client as mqtt
 import base64
 import time
 import numpy as np
-
-# Set matplotlib backend to Qt5Agg before importing matplotlib components
-import matplotlib
-matplotlib.use('Qt5Agg')
-
-from matplotlib import pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-
+import logging
 from image_stitching import process_all_cameras
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 class ThermalCameraMQTTClient:
-
     def __init__(self, system_obj):
         self._system = system_obj
         self.TOPIC = system_obj.settings["ThermalCamera"]["mqtt_topic"]
         self.TOPIC_BASE = self.TOPIC.replace("#", "")
 
+        # Initialize data structures
+        self._status = {}
         self._stitching_data = {}
-        self._images = {f"camera{i}": np.random.rand(32, 24) for i in range(4)}
-        self.__init_cameras_pic()
+        self._images = {f"camera{i}": np.zeros((24, 32)) for i in range(4)}
+        self._stitched_figures = None
 
+        # Create MQTT client
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "thermalcam")
         self._client.on_connect = self.on_connect
         self._client.on_message = self.on_message
-        self._client.connect(self._system.BROKER, self._system.PORT)
+        
+        try:
+            self._client.connect(self._system.BROKER, self._system.PORT)
+            logger.info(f"Connected to MQTT broker at {self._system.BROKER}:{self._system.PORT}")
+        except Exception as e:
+            logger.error(f"Failed to connect to MQTT broker: {e}")
+            raise
 
     def on_connect(self, client, userdata, flags, rc):
-        self._client.subscribe(self.TOPIC)
+        """Handle MQTT connection"""
+        if rc == 0:
+            self._client.subscribe(self.TOPIC)
+            logger.info(f"Subscribed to topic: {self.TOPIC}")
+        else:
+            logger.error(f"Failed to connect with result code {rc}")
 
     def on_message(self, client, userdata, msg):
-        if msg.topic.startswith(f"{self.TOPIC_BASE}/state"):
-            self.handle_state_message(msg.payload)
-        elif msg.topic.startswith(f"{self.TOPIC_BASE}/camera"):
-            self.handle_camera_message(msg.topic, json.loads(msg.payload))
-        else:
-            pass
+        """Handle incoming MQTT messages"""
+        try:
+            if "state" in msg.topic:
+                self.handle_state_message(msg.payload)
+            elif "camera" in msg.topic:
+                self.handle_camera_message(msg.topic, msg.payload)
+            else:
+                logger.warning(f"Received message on unknown topic: {msg.topic}")
+        except Exception as e:
+            logger.error(f"Error handling message: {e}")
 
     def handle_state_message(self, payload):
-        """Handle incoming state messages."""
-        self._status = json.loads(payload)
-        self._system.update_status({"thermal_camera": self._status})
+        """Handle incoming state messages"""
+        try:
+            self._status = json.loads(payload)
+            self._system.update_status({"thermal_camera": self._status})
+            logger.debug("Updated thermal camera status")
+        except Exception as e:
+            logger.error(f"Error handling state message: {e}")
 
     def handle_camera_message(self, topic, payload):
-        camera_name = topic.split("/")[2]
-        response = json.loads(payload)
-        image_data = base64.b64decode(response["image"])
-        position = float(response["position"])
-        flo_arr = [struct.unpack("f", image_data[i : i + 4])[0] for i in range(0, len(image_data), 4)]
-        processed_image = np.flip(np.rot90(np.array(flo_arr).reshape(24, 32)), axis=0)
-        if camera_name not in self._stitching_data:
-            self._stitching_data[camera_name] = {}
-        if position not in self._stitching_data[camera_name]:
-            self._stitching_data[camera_name][position] = []
-        self._stitching_data[camera_name][position].append(processed_image)
-        self._images[camera_name].set_data(processed_image)
-        self._images[camera_name].set_clim(min(flo_arr), max(flo_arr))
-        plt.draw()
+        """Handle incoming camera messages"""
+        try:
+            camera_name = topic.split("/")[2]
+            data = json.loads(payload)
+            
+            # Decode image data
+            image_data = base64.b64decode(data["image"])
+            position = float(data["position"])
+            
+            # Convert to float array
+            flo_arr = [struct.unpack("f", image_data[i:i+4])[0] for i in range(0, len(image_data), 4)]
+            
+            # Process image
+            processed_image = np.flip(np.rot90(np.array(flo_arr).reshape(24, 32)), axis=0)
+            
+            # Store for stitching
+            if camera_name not in self._stitching_data:
+                self._stitching_data[camera_name] = {}
+            if position not in self._stitching_data[camera_name]:
+                self._stitching_data[camera_name][position] = []
+            self._stitching_data[camera_name][position].append(processed_image)
+            
+            # Update current image
+            self._images[camera_name] = processed_image
+            
+            # Try to stitch images
+            self.__stitch_images()
+            
+            logger.debug(f"Processed image from {camera_name} at position {position}")
+            
+        except Exception as e:
+            logger.error(f"Error handling camera message: {e}")
+
+    def __stitch_images(self):
+        """Attempt to stitch images together"""
+        try:
+            if self._stitching_data:
+                self._stitched_figures = process_all_cameras(self._stitching_data)
+                logger.debug("Stitched camera images")
+        except Exception as e:
+            logger.error(f"Error stitching images: {e}")
 
     def publish_cmd(self, command, params=None):
-        """Publish a command to the MQTT broker."""
-        if params is None:
-            params = {}
-        payload = json.dumps(params)
-        self._client.publish(f"{self.TOPIC_BASE}/cmd/{command}", payload)
+        """Publish a command to the MQTT broker"""
+        try:
+            if params is None:
+                params = {}
+            payload = json.dumps(params)
+            self._client.publish(f"{self.TOPIC_BASE}/cmd/{command}", payload)
+            logger.debug(f"Published command: {command} with params: {params}")
+        except Exception as e:
+            logger.error(f"Error publishing command: {e}")
 
     ### Commands ###
     def rotate(self, payload):
+        """Rotate the camera by a delta angle"""
         self.publish_cmd("rotate", payload)
 
     def go_to(self, payload):
+        """Go to a specific angle"""
         self.publish_cmd("go_to", payload)
 
     def calibrate(self, payload):
+        """Calibrate the camera system"""
         self.publish_cmd("calibrate", payload)
 
     def get_switch_state(self, payload):
+        """Get the state of the limit switches"""
         self.publish_cmd("get_switch_state", payload)
 
     def set_absolute_position(self, payload):
+        """Set the absolute position"""
         self.publish_cmd("set_absolute_position", payload)
 
     def export_absolute_position(self, payload):
+        """Export the current absolute position"""
         self.publish_cmd("export_absolute_position", payload)
 
     def import_absolute_position(self, payload):
+        """Import a saved absolute position"""
         self.publish_cmd("import_absolute_position", payload)
 
     def get_frame(self, payload):
+        """Get a single frame from the cameras"""
         self.publish_cmd("get_frame", payload)
 
     def get_frames(self, payload):
+        """Get frames from all cameras"""
         self.publish_cmd("get_frames", payload)
 
     def init(self, payload):
+        """Initialize the camera system"""
         self.publish_cmd("init", payload)
 
     def release(self, payload):
+        """Release the stepper motor"""
         self.publish_cmd("release", payload)
 
     def run(self, payload):
+        """Start the camera process"""
         self.publish_cmd("run", payload)
 
     def stop(self, payload):
+        """Stop the camera process"""
         self.publish_cmd("stop", payload)
-
-    ### Pictures ###
-    def __init_cameras_pic(self):
-        self._fig_cameras, self._axs_cameras = plt.subplots(2, 2, figsize=(10, 8))
-        self._images = [
-            self._axs_cameras[i, j].imshow(self._images[f"camera{i*2+j}"], cmap="plasma")
-            for i in range(2)
-            for j in range(2)
-        ]
-        self._cbar = [
-            make_axes_locatable(self._axs_cameras[i, j]).append_axes("right", size="5%", pad=0.05)
-            for i in range(2)
-            for j in range(2)
-        ]
-        self._cbar = [self._fig_cameras.colorbar(self._images[i], cax=self._cbar[i]) for i in range(4)]
-        self._titles = [self._axs_cameras[i, j].set_title(f"Camera {i*2+j}") for i in range(2) for j in range(2)]
-
-    def __stitching(self):
-        self._stitched_figures = process_all_cameras(self._stitching_data)
 
     ### MQTT Client Loop ###
     def loop_start(self):
-        self._client.loop_start()
+        """Start the MQTT client loop"""
+        try:
+            self._client.loop_start()
+            logger.info("Started MQTT client loop")
+        except Exception as e:
+            logger.error(f"Error starting MQTT loop: {e}")
+
+    def loop_stop(self):
+        """Stop the MQTT client loop"""
+        try:
+            self._client.loop_stop()
+            logger.info("Stopped MQTT client loop")
+        except Exception as e:
+            logger.error(f"Error stopping MQTT loop: {e}")

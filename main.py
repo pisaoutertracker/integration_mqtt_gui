@@ -5,6 +5,8 @@ import logging
 from PyQt5 import QtWidgets, uic
 from PyQt5.QtCore import Qt, QTimer
 from system import System
+from caenGUI import caenGUI
+from thermal_camera_tab import ThermalCameraTab
 
 # Configure logging
 logging.basicConfig(
@@ -78,6 +80,15 @@ class MainApp(QtWidgets.QMainWindow):
         # Add the tab to the tab widget
         self.tab_widget.addTab(self.marta_coldroom_tab, "MARTA Cold Room")
         
+        # Add CAEN tab
+        self.caen_tab = QtWidgets.QWidget()
+        self.setup_caen_tab()
+        self.tab_widget.addTab(self.caen_tab, "CAEN Control")
+        
+        # Add Thermal Camera tab
+        self.thermal_camera_tab = ThermalCameraTab(self.system)
+        self.tab_widget.addTab(self.thermal_camera_tab, "Thermal Camera")
+        
         # Load settings tab from UI file
         self.settings_tab = QtWidgets.QWidget()
         uic.loadUi("settings_ui.ui", self.settings_tab)
@@ -89,6 +100,14 @@ class MainApp(QtWidgets.QMainWindow):
         # Setup status bar
         self.statusBar().showMessage("Ready")
         logger.info("UI setup completed")
+    
+    def setup_caen_tab(self):
+        """Setup the CAEN control tab"""
+        layout = QtWidgets.QVBoxLayout(self.caen_tab)
+        
+        # Create CAEN GUI instance
+        self.caen_gui = caenGUI(self.system)  # Pass system instance to caenGUI
+        layout.addWidget(self.caen_gui)
     
     def load_settings_to_ui(self):
         # Fill settings UI with current values
