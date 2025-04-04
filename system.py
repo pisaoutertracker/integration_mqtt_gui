@@ -6,7 +6,7 @@ import sys
 import logging
 from thermal_camera import ThermalCameraMQTTClient
 from marta_coldroom import MartaColdRoomMQTTClient
-from caen import CaenMQTTClient
+from caen_client import CAENTCPClient
 
 # Configure logging
 logging.basicConfig(
@@ -33,8 +33,7 @@ class System:
                 "mqtt": {"broker": "localhost", "port": 1883},
                 "MARTA": {"mqtt_topic": "/MARTA/#"},
                 "Coldroom": {"mqtt_topic": "/coldroom/#"},
-                "ThermalCamera": {"mqtt_topic": "/thermalcamera/#"},
-                "Caen": {"mqtt_topic": "/caenstatus/full/#"}
+                "ThermalCamera": {"mqtt_topic": "/thermalcamera/#"}
             }
 
         # Global variables
@@ -46,6 +45,8 @@ class System:
         # Thread control
         self._mqtt_thread = None
         self._thread_stop = False
+        self._caen_thread = None
+        self._caen_thread_stop = False
 
         # Initialize MQTT clients
         logger.info("Initializing MQTT clients...")
@@ -64,8 +65,8 @@ class System:
             self._thermalcamera = None
             
         try:
-            self._caen = CaenMQTTClient(self)
-            logger.info("CAEN client initialized")
+            self._caen = CAENTCPClient()
+            logger.info("CAEN TCP client initialized")
         except Exception as e:
             logger.error(f"Error initializing CAEN client: {e}")
             self._caen = None
@@ -116,6 +117,14 @@ class System:
             self._mqtt_thread.daemon = True
             self._mqtt_thread.start()
             logger.info("MQTT thread started")
+            
+            # Start CAEN status update thread
+            if self._caen and not self._caen_thread:
+                self._caen_thread_stop = False
+                self._caen_thread = threading.Thread(target=self._caen_status_loop)
+                self._caen_thread.daemon = True
+                self._caen_thread.start()
+                logger.info("CAEN status thread started")
         else:
             logger.warning("MQTT thread already running")
 
@@ -126,6 +135,12 @@ class System:
             self._thread_stop = True
             self._mqtt_thread.join(timeout=2)
             logger.info("MQTT thread stopped")
+            
+            # Stop CAEN status thread
+            if self._caen_thread and self._caen_thread.is_alive():
+                self._caen_thread_stop = True
+                self._caen_thread.join(timeout=2)
+                logger.info("CAEN status thread stopped")
         else:
             logger.debug("No MQTT thread running")
 
@@ -142,10 +157,6 @@ class System:
                 logger.debug("Starting Thermal Camera client loop")
                 self._thermalcamera.loop_start()
             
-            if self._caen:
-                logger.debug("Starting CAEN client loop")
-                self._caen.start_client_loop()
-            
             logger.info("All MQTT client loops started")
             
             # Keep thread running
@@ -156,6 +167,18 @@ class System:
             logger.error(f"Error in MQTT loop: {e}")
         finally:
             logger.info("MQTT loop ending, stopping client loops...")
+
+    def _caen_status_loop(self):
+        """Background thread to periodically update CAEN status"""
+        while not self._caen_thread_stop:
+            try:
+                if self._caen:
+                    status = self._caen.get_status()
+                    if status:
+                        self.update_status({"caen": status})
+            except Exception as e:
+                logger.error(f"Error in CAEN status loop: {e}")
+            time.sleep(2)
 
     def cleanup(self):
         """Clean up resources"""
@@ -174,8 +197,8 @@ class System:
                 self._thermalcamera.loop_start()
             
             if hasattr(self, '_caen') and self._caen:
-                logger.debug("Stopping CAEN client loop")
-                self._caen.stop_client_loop()
+                logger.debug("Disconnecting CAEN TCP client")
+                self._caen.disconnect()
                 
             logger.info("All resources cleaned up")
             

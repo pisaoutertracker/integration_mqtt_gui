@@ -8,5 +8,4 @@ Coldroom:
   co2_sensor_topic: "/ble/CO2-1"
 ThermalCamera:
   mqtt_topic: "/thermalcamera/#"
-Caen:
-  mqtt_topic: "/caenstatus/full/#"
+  stitch_camera: "camera0"

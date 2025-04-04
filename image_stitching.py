@@ -2,6 +2,8 @@ import time
 import json
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.figure import Figure
+import threading
 
 
 def manual_stitch_images(images, angles, temp_min, temp_max, full_coverage=360):
@@ -67,13 +69,9 @@ def stitch_images_pixel_based(images, angles, temp_min, temp_max, full_coverage=
     return panorama_norm
 
 
-def recalibrate_to_degrees(panorama, min_angle, max_angle, temp_min, temp_max, full_coverage=360):
-    """Recalibrate the panorama to show angle in degrees and temperature in Celsius"""
+def create_figure_data(panorama, min_angle, max_angle, temp_min, temp_max, full_coverage=360):
+    """Create data for figure without actually creating the figure"""
     h, w = panorama.shape[:2]
-
-    # Create a figure with proper x-axis in degrees
-    plt.figure(figsize=(15, 6))
-    img_display = plt.imshow(panorama, cmap="plasma", vmin=0, vmax=255)
 
     # Determine appropriate angle range for x-axis
     if max_angle - min_angle >= full_coverage - 10:  # Close enough to full coverage
@@ -85,44 +83,31 @@ def recalibrate_to_degrees(panorama, min_angle, max_angle, temp_min, temp_max, f
         display_min = min_angle
         display_max = max_angle
 
-    # Set x-axis ticks to show angles
-    plt.xticks(np.linspace(0, w, 8), np.linspace(display_min, display_max, 8).round(1))
-
-    plt.xlabel("Angle (degrees)")
-    plt.yticks([])
-
-    # Add colorbar to show temperature scale
-    cbar = plt.colorbar(img_display, orientation="horizontal")
+    # Create x-axis ticks
+    xticks = np.linspace(0, w, 8)
+    xticklabels = np.linspace(display_min, display_max, 8).round(1)
 
     # Create temperature tick positions that map to the 0-255 color range
     cbar_ticks = np.linspace(0, 255, 6)
     cbar_labels = np.linspace(temp_min, temp_max, 6).round(1)
-    cbar.set_ticks(cbar_ticks)
-    cbar.set_ticklabels([f"{t}°C" for t in cbar_labels])
-    cbar.set_label("Temperature (°C)")
+    cbar_ticklabels = [f"{t}°C" for t in cbar_labels]
 
-    plt.tight_layout()
-    return plt.gcf()
+    return {
+        'image': panorama,
+        'xticks': xticks,
+        'xticklabels': xticklabels,
+        'cbar_ticks': cbar_ticks,
+        'cbar_ticklabels': cbar_ticklabels,
+        'temp_min': temp_min,
+        'temp_max': temp_max
+    }
 
 
-def plot_circular_panorama(panorama, min_angle, max_angle, temp_min, temp_max, radius_range=(0.6, 0.9)):
-    """
-    Plot the panorama in a ring format
-
-    Parameters:
-    - panorama: The stitched panorama image
-    - min_angle, max_angle: The angle range covered by the panorama in degrees
-    - temp_min, temp_max: Temperature range in Celsius for colorbar
-    - radius_range: Inner and outer radius of the ring as fraction of max radius
-    """
-    # Create a figure with polar projection
-    fig = plt.figure(figsize=(12, 12))
-    ax = fig.add_subplot(111, projection="polar")
-
-    # Get dimensions
+def create_circular_data(panorama, min_angle, max_angle, temp_min, temp_max, radius_range=(0.6, 0.9)):
+    """Create data for circular plot without creating the figure"""
     h, w = panorama.shape
 
-    # Create meshgrid in polar coordinates
+    # Create theta and r values
     min_angle_rad = np.radians(min_angle)
     max_angle_rad = np.radians(max_angle)
 
@@ -130,13 +115,11 @@ def plot_circular_panorama(panorama, min_angle, max_angle, temp_min, temp_max, r
     if max_angle_rad <= min_angle_rad:
         max_angle_rad += 2 * np.pi
 
-    # Create theta and r values
+    # Create theta values
     theta_vals = np.linspace(min_angle_rad, max_angle_rad, w)
 
-    # FIXED: Correctly use inner and outer radius
-    inner_radius, outer_radius = radius_range
-
     # Create r values with proper spacing
+    inner_radius, outer_radius = radius_range
     r_vals = np.linspace(outer_radius, inner_radius, h)  # Reversed for correct image orientation
 
     # Create the meshgrid
@@ -148,42 +131,23 @@ def plot_circular_panorama(panorama, min_angle, max_angle, temp_min, temp_max, r
     else:
         normalized_data = panorama.astype(float)
 
-    # Plot using pcolormesh which works well with polar projection
-    cax = ax.pcolormesh(theta, r, normalized_data, cmap="plasma", vmin=temp_min, vmax=temp_max)
-
-    # Set the direction of theta increasing (clockwise)
-    ax.set_theta_direction(-1)  # -1 for clockwise
-
-    # Set where theta=0 is located
-    ax.set_theta_zero_location("N")  # North
-
-    # FIXED: Set the limits properly to show the entire ring
-    # The minimum should be slightly smaller than inner_radius to ensure the entire ring is visible
-    ax.set_rlim(inner_radius, outer_radius)
-
-    # Empty the center of the ring by creating a white circle - only if inner_radius > 0
-    if inner_radius > 0:
-        center_circle = plt.Circle(
-            (0, 0), inner_radius, transform=ax.transData._b, zorder=10, edgecolor="black", facecolor="white"
-        )
-        ax.add_artist(center_circle)
-
-    # Set custom theta ticks
+    # Create angle ticks
     angle_ticks = np.linspace(min_angle, max_angle, 8, endpoint=min_angle != max_angle - 360)
     angle_ticks = angle_ticks % 360
-    ax.set_xticks(np.radians(angle_ticks))
-    ax.set_xticklabels([f"{int(a)}°" for a in angle_ticks])
+    angle_tick_positions = np.radians(angle_ticks)
+    angle_tick_labels = [f"{int(a)}°" for a in angle_ticks]
 
-    # Remove radial ticks and labels
-    ax.set_yticks([])
-    ax.grid(False)
-
-    # Add a colorbar
-    cbar = fig.colorbar(cax, ax=ax, orientation="horizontal", pad=0.08, label="Temperature (°C)")
-
-    # Add title
-    plt.tight_layout()
-    return fig
+    return {
+        'theta': theta,
+        'r': r,
+        'data': normalized_data,
+        'angle_tick_positions': angle_tick_positions,
+        'angle_tick_labels': angle_tick_labels,
+        'inner_radius': inner_radius,
+        'outer_radius': outer_radius,
+        'temp_min': temp_min,
+        'temp_max': temp_max
+    }
 
 
 def process_camera_data(camera_name, cameras):
@@ -200,79 +164,57 @@ def process_camera_data(camera_name, cameras):
     temp_min = float("inf")
     temp_max = float("-inf")
 
-    # First pass to determine global temperature range
-    for position in positions:
-        # Get the image data for this position
-        image_data = camera_data[position]
-        if isinstance(image_data, list) and len(image_data) > 0:
-            # Convert string image data to numpy array if needed. Average all images for this position
-            # to get a single representative image
-            img = np.array(image_data[0])
-            if len(image_data) > 1:
-                img = np.mean([np.array(data) for data in image_data], axis=0)
-            images.append(img)
+    for pos in positions:
+        # Get the first image at each position
+        img = camera_data[pos][0]  # Take first image at each position
+        images.append(img)
+        angles.append(float(pos))
 
-            # Update global min/max temperature values
-            current_min = np.min(img)
-            current_max = np.max(img)
+        # Update temperature range
+        temp_min = min(temp_min, img.min())
+        temp_max = max(temp_max, img.max())
 
-            if current_min < temp_min:
-                temp_min = current_min
-            if current_max > temp_max:
-                temp_max = current_max
+    # Step 2: Stitch images
+    panorama = stitch_images_pixel_based(images, angles, temp_min, temp_max)
 
-    # Second pass to load images
-    for position in positions:
-        # Get the image data for this position
-        image_data = camera_data[position]
-        if isinstance(image_data, list) and len(image_data) > 0:
-            # Convert string image data to numpy array if needed
-            img = np.array(image_data[0])
-            if len(image_data) > 1:
-                img = np.mean([np.array(data) for data in image_data], axis=0)
-            images.append(img)
-            angles.append(float(position))
+    # Step 3: Create figure data
+    figure_data = create_figure_data(panorama, min(angles), max(angles), temp_min, temp_max)
+    circular_data = create_circular_data(panorama, min(angles), max(angles), temp_min, temp_max)
 
-    return images, angles, temp_min, temp_max
+    return figure_data, circular_data
 
 
-def process_all_cameras(cameras):
-    for name in cameras.keys():
-        images, angles, temp_min, temp_max = process_camera_data(name, cameras)
-        # Generate panoramas for each camera
-        if len(images) > 0:
-            angle_range = max(angles) - min(angles)
-            full_coverage = 360 if angle_range > 300 else angle_range + 20
-            pixel_panorama = stitch_images_pixel_based(images, angles, temp_min, temp_max, full_coverage)
-            angle_calibrated_fig = recalibrate_to_degrees(
-                pixel_panorama, min(angles), max(angles), temp_min, temp_max, full_coverage
-            )
-            ring_fig1 = plot_circular_panorama(
-                pixel_panorama, min(angles), max(angles), temp_min, temp_max, radius_range=(0.3, 1.0)
-            )
-            # Save results
-            angle_calibrated_fig.savefig(f"{name}_linear.jpg")
-            ring_fig1.savefig(f"{name}_circular.jpg")
+def process_all_cameras(cameras, settings=None):
+    """Process all cameras and return figure data"""
+    # Get the camera to use from settings
+    camera_name = "camera0"  # Default to camera0
+    if settings and "ThermalCamera" in settings and "stitch_camera" in settings["ThermalCamera"]:
+        camera_name = settings["ThermalCamera"]["stitch_camera"]
+    
+    if camera_name in cameras:
+        figure_data, circular_data = process_camera_data(camera_name, cameras)
+        return figure_data, circular_data
+    return None, None
 
 
 def load_data(file_path):
     """Load data from a JSON file"""
-    with open(file_path, "r") as file:
-        data = json.load(file)
-    return data
+    with open(file_path, "r") as f:
+        return json.load(f)
 
 
 def execute_stitching():
-    """Main function to execute stitching"""
-    cameras = load_data("stitching_data_preprocessed.json")
-    process_all_cameras(cameras)
+    """Execute the stitching process"""
+    data = load_data("data.json")
+    process_all_cameras(data)
 
 
 def loop():
-    """Main loop to process all cameras"""
+    """Main loop for testing"""
     while True:
         execute_stitching()
+        time.sleep(1)
 
 
 if __name__ == "__main__":
-    execute_stitching()
+    loop()

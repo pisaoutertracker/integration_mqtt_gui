@@ -8,11 +8,9 @@ import logging
 from image_stitching import process_all_cameras
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
 
 class ThermalCameraMQTTClient:
     def __init__(self, system_obj):
@@ -24,13 +22,15 @@ class ThermalCameraMQTTClient:
         self._status = {}
         self._stitching_data = {}
         self._images = {f"camera{i}": np.zeros((24, 32)) for i in range(4)}
-        self._stitched_figures = None
+        self._figure_data = None
+        self._circular_data = None
 
         # Create MQTT client
-        self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "thermalcam")
+        self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1)
         self._client.on_connect = self.on_connect
         self._client.on_message = self.on_message
-        
+        self._client.on_disconnect = self.on_disconnect
+
         try:
             self._client.connect(self._system.BROKER, self._system.PORT)
             logger.info(f"Connected to MQTT broker at {self._system.BROKER}:{self._system.PORT}")
@@ -51,12 +51,19 @@ class ThermalCameraMQTTClient:
         try:
             if "state" in msg.topic:
                 self.handle_state_message(msg.payload)
-            elif "camera" in msg.topic:
+            elif ("camera" in msg.topic) and ("image" not in msg.topic):
                 self.handle_camera_message(msg.topic, msg.payload)
             else:
                 logger.warning(f"Received message on unknown topic: {msg.topic}")
         except Exception as e:
             logger.error(f"Error handling message: {e}")
+
+    def on_disconnect(self, client, userdata, rc):
+        """Handle MQTT disconnection"""
+        if rc != 0:
+            logger.error(f"Unexpected disconnection: {rc}")
+        else:
+            logger.info("Disconnected from MQTT broker")
 
     def handle_state_message(self, payload):
         """Handle incoming state messages"""
@@ -72,32 +79,32 @@ class ThermalCameraMQTTClient:
         try:
             camera_name = topic.split("/")[2]
             data = json.loads(payload)
-            
+
             # Decode image data
             image_data = base64.b64decode(data["image"])
             position = float(data["position"])
-            
+
             # Convert to float array
-            flo_arr = [struct.unpack("f", image_data[i:i+4])[0] for i in range(0, len(image_data), 4)]
-            
+            flo_arr = [struct.unpack("f", image_data[i : i + 4])[0] for i in range(0, len(image_data), 4)]
+
             # Process image
             processed_image = np.flip(np.rot90(np.array(flo_arr).reshape(24, 32)), axis=0)
-            
+
             # Store for stitching
             if camera_name not in self._stitching_data:
                 self._stitching_data[camera_name] = {}
             if position not in self._stitching_data[camera_name]:
                 self._stitching_data[camera_name][position] = []
             self._stitching_data[camera_name][position].append(processed_image)
-            
+
             # Update current image
             self._images[camera_name] = processed_image
-            
+
             # Try to stitch images
             self.__stitch_images()
-            
+
             logger.debug(f"Processed image from {camera_name} at position {position}")
-            
+
         except Exception as e:
             logger.error(f"Error handling camera message: {e}")
 
@@ -105,7 +112,7 @@ class ThermalCameraMQTTClient:
         """Attempt to stitch images together"""
         try:
             if self._stitching_data:
-                self._stitched_figures = process_all_cameras(self._stitching_data)
+                self._figure_data, self._circular_data = process_all_cameras(self._stitching_data, self._system.settings)
                 logger.debug("Stitched camera images")
         except Exception as e:
             logger.error(f"Error stitching images: {e}")
