@@ -47,8 +47,17 @@ def manual_stitch_images(images, angles, temp_min, temp_max, full_coverage=360):
     panorama[mask] = panorama[mask] / overlap_count[mask]
 
     # Convert to uint8 for display - use actual temperature range
-    panorama_norm = 255 * (panorama - temp_min) / (temp_max - temp_min)
+    # Ensure temp_min != temp_max to avoid division by zero
+    if np.isclose(temp_min, temp_max):
+        temp_max = temp_min + 1.0  # Add a small difference to avoid division by zero
+    
+    # Create normalized array with proper handling of NaN values
+    panorama_norm = np.zeros_like(panorama)
+    valid_mask = ~np.isnan(panorama)
+    panorama_norm[valid_mask] = 255 * (panorama[valid_mask] - temp_min) / (temp_max - temp_min)
+    
     # Areas without data will be black (0)
+    panorama_norm = np.nan_to_num(panorama_norm, nan=0.0)  # Convert NaNs to 0
     panorama_norm = np.clip(panorama_norm, 0, 255)  # Ensure values are in valid range
     panorama_norm = panorama_norm.astype(np.uint8)
 
@@ -58,9 +67,18 @@ def manual_stitch_images(images, angles, temp_min, temp_max, full_coverage=360):
 def stitch_images_pixel_based(images, angles, temp_min, temp_max, full_coverage=360):
     # Make sure images are 8-bit single channel
     # Normalize to 0-255 range while preserving temperature scale
+    
+    # Ensure temp_min != temp_max to avoid division by zero
+    if np.isclose(temp_min, temp_max):
+        temp_max = temp_min + 1.0  # Add a small difference to avoid division by zero
+    
     images_8bit = []
     for img in images:
-        img_norm = 255 * (img - temp_min) / (temp_max - temp_min)
+        # Handle NaN values properly
+        img_norm = np.zeros_like(img)
+        valid_mask = ~np.isnan(img)
+        img_norm[valid_mask] = 255 * (img[valid_mask] - temp_min) / (temp_max - temp_min)
+        img_norm = np.nan_to_num(img_norm, nan=0.0)  # Convert NaNs to 0
         img_norm = np.clip(img_norm, 0, 255)
         images_8bit.append(img_norm.astype(np.uint8))
 
