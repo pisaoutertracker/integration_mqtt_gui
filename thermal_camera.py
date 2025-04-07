@@ -118,21 +118,26 @@ class ThermalCameraMQTTClient:
         """Attempt to stitch images together"""
         try:
             if self._stitching_data:
-                self._figure_data, self._circular_data = process_all_cameras(self._stitching_data, self._system.settings)
+                self._figure_data, self._circular_data = process_all_cameras(
+                    self._stitching_data, self._system.settings
+                )
                 logger.debug("Stitched camera images")
         except Exception as e:
             logger.error(f"Error stitching images: {e}")
 
     def publish_cmd(self, command, params=None):
         """Publish a command to the MQTT broker"""
+        print(command)
         try:
             if params is None:
                 params = {}
             payload = json.dumps(params)
-            self._client.publish(f"{self.TOPIC_BASE}/cmd/{command}", payload)
+            print(f"{self.TOPIC_BASE}cmd/{command}", payload)
+            self._client.publish(f"{self.TOPIC_BASE}cmd/{command}", payload)
             logger.debug(f"Published command: {command} with params: {params}")
         except Exception as e:
             logger.error(f"Error publishing command: {e}")
+            raise e
 
     ### Commands ###
     def rotate(self, payload):
@@ -192,7 +197,7 @@ class ThermalCameraMQTTClient:
         """Start the MQTT client loop"""
         try:
             self._client.loop_start()
-            logger.info("Started MQTT client loop")
+            logger.info("Started MQTT client loop for Thermal Camera")
         except Exception as e:
             logger.error(f"Error starting MQTT loop: {e}")
 

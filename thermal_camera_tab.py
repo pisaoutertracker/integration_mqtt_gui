@@ -50,69 +50,112 @@ class ThermalCameraTab(QtWidgets.QWidget):
             self.ui.graphicsView.setScene(scene1)
 
             # Create matplotlib figure for individual cameras with adjusted size
-            self.cameras_fig = Figure(figsize=(8, 6), dpi=100)  # Adjusted figure size
+            self.cameras_fig = Figure(figsize=(8, 5), dpi=100)  # Increased width
             self.cameras_canvas = FigureCanvas(self.cameras_fig)
             scene1.addWidget(self.cameras_canvas)
 
-            # Create 2x2 grid for cameras with proper spacing
-            self.cameras_axes = self.cameras_fig.subplots(2, 2, gridspec_kw={"hspace": 0.4, "wspace": 0.3})
+            # Create 2x2 grid for cameras with minimal spacing
+            self.cameras_axes = self.cameras_fig.subplots(2, 2, gridspec_kw={"hspace": 0.15, "wspace": 0.1})
             self.camera_images = []
 
             # Initialize camera images with proper sizing
             for i in range(2):
                 for j in range(2):
                     ax = self.cameras_axes[i, j]
-                    img = ax.imshow(
-                        np.zeros((24, 32)),
-                        cmap="plasma",
-                        aspect="equal",
-                        interpolation="nearest",  # Added interpolation for better display
-                    )
+                    img = ax.imshow(np.zeros((24, 32)), cmap="plasma", aspect="equal", interpolation="nearest")
                     self.camera_images.append(img)
-                    ax.set_title(f"Camera {i*2+j+1}")  # Updated to 1-based numbering
-                    ax.set_xticks([])  # Hide x-axis ticks
-                    ax.set_yticks([])  # Hide y-axis ticks
+                    ax.set_title(f"Camera {i*2+j+1}")
+                    ax.set_xticks([])
+                    ax.set_yticks([])
 
                     # Add colorbar with proper sizing
                     cbar = self.cameras_fig.colorbar(img, ax=ax, fraction=0.046, pad=0.04)
-                    cbar.ax.tick_params(labelsize=8)  # Adjust colorbar text size
+                    cbar.ax.tick_params(labelsize=8)
 
-            self.cameras_fig.tight_layout()
+            # Adjust subplot parameters to remove excess whitespace
+            self.cameras_fig.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
 
-            # Create scene and canvas for stitched image view
-            scene2 = QtWidgets.QGraphicsScene()
-            self.ui.graphicsView_2.setScene(scene2)
+            # Create tab widget for stitched views
+            self.stitched_tab_widget = QtWidgets.QTabWidget()
+            self.ui.gridLayout.addWidget(self.stitched_tab_widget, 13, 0, 1, 16)
 
-            # Create matplotlib figure for stitched image with adjusted size
-            self.stitched_fig = Figure(figsize=(10, 4), dpi=100)  # Adjusted figure size
-            self.stitched_canvas = FigureCanvas(self.stitched_fig)
-            scene2.addWidget(self.stitched_canvas)
+            # Create stitched view for each camera
+            self.stitched_figs = []
+            self.stitched_canvases = []
+            self.stitched_images = []
+            self.stitched_axes = []
 
-            # Create axes for stitched image with proper sizing
-            self.stitched_ax = self.stitched_fig.add_subplot(111)
-            self.stitched_image = self.stitched_ax.imshow(
-                np.zeros((24, 32)),
-                cmap="plasma",
-                aspect="equal",
-                interpolation="nearest",  # Added interpolation for better display
-            )
-            self.stitched_ax.set_title("Stitched Image")
-            self.stitched_ax.set_xticks([])  # Hide x-axis ticks initially
-            self.stitched_ax.set_yticks([])  # Hide y-axis ticks
+            tab_names = ["Camera 1", "Camera 2", "Camera 3", "Camera 4"]
+            for tab_name in tab_names:
+                # Create tab widget
+                tab = QtWidgets.QWidget()
+                tab_layout = QtWidgets.QVBoxLayout(tab)
 
-            # Add colorbar for stitched image with proper sizing
-            cbar = self.stitched_fig.colorbar(self.stitched_image, fraction=0.046, pad=0.04)
-            cbar.ax.tick_params(labelsize=8)  # Adjust colorbar text size
+                # Create figure and canvas with proper aspect ratio for 360-degree view
+                fig = Figure(figsize=(12, 3), dpi=100)
+                canvas = FigureCanvas(fig)
+                tab_layout.addWidget(canvas)
 
-            self.stitched_fig.tight_layout()
+                # Create axes and image
+                ax = fig.add_subplot(111)
+                # Initialize with a 360-degree wide array
+                img = ax.imshow(
+                    np.zeros((24, 360)),  # Full 360-degree width
+                    cmap="plasma",
+                    aspect="auto",  # Use 'auto' to fill the space
+                    interpolation="nearest",
+                    extent=[0, 360, 0, 24],  # Set the extent to match degrees
+                )
+
+                # Set up the axes for degrees
+                # ax.set_xlabel("Angle (degrees)") ! Do not set xlabel
+                ax.set_xticks(np.linspace(0, 360, 9))  # Ticks every 45 degrees
+                ax.set_yticks([])
+
+                # Add colorbar
+                cbar = fig.colorbar(img, fraction=0.046, pad=0.04)
+                cbar.ax.tick_params(labelsize=8)
+
+                # Adjust subplot parameters to maximize image space
+                fig.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.15)
+
+                # Store references
+                self.stitched_figs.append(fig)
+                self.stitched_canvases.append(canvas)
+                self.stitched_images.append(img)
+                self.stitched_axes.append(ax)
+
+                # Add tab
+                self.stitched_tab_widget.addTab(tab, tab_name)
+
+            # Remove the old graphicsView_2 since we're using tabs now
+            self.ui.graphicsView_2.setParent(None)
 
             # Create and set up position display
             self.ui.positionLE = QtWidgets.QLineEdit(self.ui.centralwidget)
             self.ui.positionLE.setObjectName("positionLE")
             self.ui.positionLE.setReadOnly(True)
             self.ui.positionLE.setFixedWidth(80)
-            # Add it to the grid next to the position label
             self.ui.gridLayout.addWidget(self.ui.positionLE, 11, 14, 1, 1)
+
+            # Make status LEDs more visible with MARTA style
+            self.ui.streamin_image_flag.setMinimumSize(30, 20)
+            self.ui.streamin_image_flag.setMaximumSize(30, 20)
+            self.ui.run_stat_flg.setMinimumSize(30, 20)
+            self.ui.run_stat_flg.setMaximumSize(30, 20)
+
+            # Update LED style to match MARTA coldroom tab
+            led_style = """
+                QFrame {
+                    border: 1px solid black;
+                    background-color: %s;
+                }
+            """
+            self.ui.streamin_image_flag.setStyleSheet(led_style % "red")
+            self.ui.run_stat_flg.setStyleSheet(led_style % "red")
+
+            # Set the minimum width of the main window to accommodate the cameras
+            self.widget.setMinimumWidth(1600)  # Increased width to avoid scrollbars
 
             logger.info("Camera views initialized")
 
@@ -145,7 +188,7 @@ class ThermalCameraTab(QtWidgets.QWidget):
         """Connect UI signals to their handlers"""
         try:
             # Connect buttons to their respective functions
-            self.ui.start_tc_PB.clicked.connect(self.start_thermal_camera)
+            self.ui.relse_mtr_PB_2.clicked.connect(self.start_thermal_camera)  # This is the Start Thermal Camera button
             self.ui.rotate_PB.clicked.connect(self.rotate)
             self.ui.go_to_PB.clicked.connect(self.go_to)
             self.ui.calibrate_PB.clicked.connect(self.calibrate)
@@ -174,23 +217,40 @@ class ThermalCameraTab(QtWidgets.QWidget):
             if "position" in status:
                 self.ui.positionLE.setText(f"{status['position']:.2f}")
 
-            # Update running status
+            # Update running status with MARTA style LED
             if "running" in status:
-                self.ui.run_stat_flg.setStyleSheet(
-                    "background-color: green;" if status["running"] else "background-color: red;"
-                )
+                led_style = """
+                    QFrame {
+                        border: 1px solid black;
+                        background-color: %s;
+                    }
+                """
+                self.ui.run_stat_flg.setStyleSheet(led_style % ("green" if status["running"] else "red"))
 
-            # Update streaming status
+            # Update streaming status with MARTA style LED
             if "streaming" in status:
-                self.ui.streamin_image_flag.setStyleSheet(
-                    "background-color: green;" if status["streaming"] else "background-color: red;"
-                )
+                led_style = """
+                    QFrame {
+                        border: 1px solid black;
+                        background-color: %s;
+                    }
+                """
+                self.ui.streamin_image_flag.setStyleSheet(led_style % ("green" if status["streaming"] else "red"))
 
             # Update camera images with proper scaling
             if hasattr(self.system._thermalcamera, "_images"):
+                # First update individual camera views
                 for i, (camera_name, image_data) in enumerate(self.system._thermalcamera._images.items()):
                     if isinstance(image_data, np.ndarray):
-                        # Update image data
+                        # Convert to float if needed
+                        if image_data.dtype != np.float64:
+                            try:
+                                image_data = image_data.astype(np.float64)
+                            except (ValueError, TypeError) as e:
+                                logger.error(f"Failed to convert image data to float: {e}")
+                                continue
+
+                        # Update individual camera view
                         self.camera_images[i].set_array(image_data)
 
                         # Calculate temperature range for consistent scaling
@@ -198,45 +258,69 @@ class ThermalCameraTab(QtWidgets.QWidget):
                         vmax = np.nanmax(image_data)
                         self.camera_images[i].set_clim(vmin, vmax)
 
-                        # Update colorbar ticks
+                        # Update colorbar ticks for camera view
                         cbar = self.camera_images[i].colorbar
                         if cbar is not None:
                             cbar.set_ticks(np.linspace(vmin, vmax, 5))
                             cbar.set_ticklabels([f"{temp:.1f}°C" for temp in np.linspace(vmin, vmax, 5)])
 
+                # Draw camera canvas
                 self.cameras_canvas.draw()
 
-            # Update stitched image if available
-            if hasattr(self.system._thermalcamera, "_figure_data"):
-                figure_data = self.system._thermalcamera._figure_data
-                if figure_data is not None and isinstance(figure_data, dict):
-                    # Update image data
-                    if "image" in figure_data:
-                        self.stitched_image.set_array(figure_data["image"])
+                # Create stitched images using the image_stitching module
+                try:
+                    from image_stitching import manual_stitch_images
 
-                        # Set temperature range
-                        if "temp_min" in figure_data and "temp_max" in figure_data:
-                            self.stitched_image.set_clim(figure_data["temp_min"], figure_data["temp_max"])
+                    # Get current position
+                    current_position = float(self.ui.positionLE.text()) if self.ui.positionLE.text() else 0.0
 
-                    # Update x-axis if angle information is available
-                    if "xticks" in figure_data and "xticklabels" in figure_data:
-                        self.stitched_ax.set_xticks(figure_data["xticks"])
-                        self.stitched_ax.set_xticklabels(figure_data["xticklabels"])
-                        self.stitched_ax.set_xlabel("Angle (degrees)")
+                    # Create stitched images for each camera
+                    for i, (camera_name, image_data) in enumerate(self.system._thermalcamera._images.items()):
+                        if isinstance(image_data, np.ndarray):
+                            # Create stitched image using the module's functions
+                            temp_min = np.nanmin(image_data)
+                            temp_max = np.nanmax(image_data)
 
-                    # Update colorbar
-                    if "temp_min" in figure_data and "temp_max" in figure_data:
-                        cbar = self.stitched_image.colorbar
-                        if cbar is not None:
-                            ticks = np.linspace(figure_data["temp_min"], figure_data["temp_max"], 5)
-                            cbar.set_ticks(ticks)
-                            cbar.set_ticklabels([f"{temp:.1f}°C" for temp in ticks])
-                            cbar.set_label("Temperature (°C)")
+                            # Create a single image panorama
+                            panorama_norm, panorama = manual_stitch_images(
+                                [image_data],  # Single image
+                                [current_position],  # Current position
+                                temp_min,
+                                temp_max,
+                                full_coverage=360,
+                            )
 
-                    self.stitched_canvas.draw()
+                            # Ensure the panorama is properly sized for 360 degrees
+                            if panorama.shape[1] != 360:
+                                # Resize to 360 degrees if needed
+                                from scipy.ndimage import zoom
+
+                                zoom_factor = (1, 360 / panorama.shape[1])
+                                panorama = zoom(panorama, zoom_factor, order=1)
+
+                            # Update the stitched view
+                            self.stitched_images[i].set_array(panorama)
+
+                            # Use the same temperature range as the camera view
+                            self.stitched_images[i].set_clim(temp_min, temp_max)
+
+                            # Update colorbar
+                            cbar = self.stitched_images[i].colorbar
+                            if cbar is not None:
+                                cbar.set_ticks(np.linspace(temp_min, temp_max, 5))
+                                cbar.set_ticklabels([f"{temp:.1f}°C" for temp in np.linspace(temp_min, temp_max, 5)])
+
+                            # Draw canvas
+                            self.stitched_canvases[i].draw()
+
+                except ImportError as e:
+                    logger.error(f"Failed to import image_stitching module: {e}")
+                except Exception as e:
+                    logger.error(f"Error creating stitched images: {e}")
 
         except Exception as e:
             logger.error(f"Error updating status: {e}")
+            logger.error(f"Error details: {str(e)}", exc_info=True)
 
     def rotate(self):
         """Rotate the thermal camera by the specified angle"""
@@ -349,12 +433,18 @@ class ThermalCameraTab(QtWidgets.QWidget):
         """Initialize and start the thermal camera"""
         try:
             if self.system._thermalcamera:
-                self.system._thermalcamera.initialize({})
+                # Add logging to check available methods
+                logger.info("Starting thermal camera")
+
+                # Try using init method instead of initialize
+                self.system._thermalcamera.init({})
                 self.enable_controls(True)
-                self.ui.start_tc_PB.setEnabled(False)
+                self.ui.relse_mtr_PB_2.setEnabled(False)  # Disable start button
                 logger.info("Thermal camera initialized")
         except Exception as e:
-            logger.error(f"Error initializing thermal camera: {e}")
+            logger.error(f"Error using alternative init method: {e}")
+            self.enable_controls(False)
+            self.ui.relse_mtr_PB_2.setEnabled(True)  # Re-enable start button
 
     def closeEvent(self, event):
         """Handle widget close event"""
