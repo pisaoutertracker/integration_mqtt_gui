@@ -90,12 +90,18 @@ class ThermalCameraMQTTClient:
             # Process image
             processed_image = np.flip(np.rot90(np.array(flo_arr).reshape(24, 32)), axis=0)
 
-            # Store for stitching
+            # Store for stitching - accumulate images for each position
             if camera_name not in self._stitching_data:
                 self._stitching_data[camera_name] = {}
             if position not in self._stitching_data[camera_name]:
                 self._stitching_data[camera_name][position] = []
+            
+            # Add the new image to the list for this position
             self._stitching_data[camera_name][position].append(processed_image)
+            
+            # Keep only the last 5 images for each position to prevent memory issues
+            if len(self._stitching_data[camera_name][position]) > 5:
+                self._stitching_data[camera_name][position] = self._stitching_data[camera_name][position][-5:]
 
             # Update current image
             self._images[camera_name] = processed_image

@@ -165,14 +165,17 @@ def process_camera_data(camera_name, cameras):
     temp_max = float("-inf")
 
     for pos in positions:
-        # Get the first image at each position
-        img = camera_data[pos][0]  # Take first image at each position
-        images.append(img)
-        angles.append(float(pos))
+        # Get all images at this position and average them
+        pos_images = camera_data[pos]
+        if pos_images:
+            # Average all images at this position
+            avg_img = np.mean(pos_images, axis=0)
+            images.append(avg_img)
+            angles.append(float(pos))
 
-        # Update temperature range
-        temp_min = min(temp_min, img.min())
-        temp_max = max(temp_max, img.max())
+            # Update temperature range
+            temp_min = min(temp_min, avg_img.min())
+            temp_max = max(temp_max, avg_img.max())
 
     # Step 2: Stitch images
     panorama = stitch_images_pixel_based(images, angles, temp_min, temp_max)
