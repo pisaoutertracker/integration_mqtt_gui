@@ -304,18 +304,13 @@ class MainApp(QtWidgets.QMainWindow):
                         logger.debug(f"Updated light LED: {'yellow' if coldroom['light'] else 'black'}")
                 
                 # Door status and LED
-                if 'door_status' in coldroom:
-                    door_status = "OPEN" if coldroom['door_status'] else "CLOSED"
+                if 'CmdDoorUnlock_Reff' in coldroom:
+                    door_status = "OPEN" if coldroom['CmdDoorUnlock_Reff'] else "CLOSED"
                     label = central.findChild(QtWidgets.QLabel, "coldroom_door_state_label")
                     if label:
                         label.setText(door_status)
                         logger.debug(f"Updated door status: {door_status}")
                     
-                    # Update door LED (red when open)
-                    door_led = central.findChild(QtWidgets.QFrame, "door_LED")
-                    if door_led:
-                        door_led.setStyleSheet("background-color: red;" if coldroom['door_status'] else "background-color: black;")
-                        logger.debug(f"Updated door LED: {'red' if coldroom['door_status'] else 'black'}")
                 
                 # Update safe to open LED based on door_locked safety flag
                 safe_to_open_led = central.findChild(QtWidgets.QFrame, "safe_to_open_LED")

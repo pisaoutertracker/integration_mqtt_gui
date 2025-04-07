@@ -123,9 +123,10 @@ class MartaColdRoomMQTTClient:
             payload: The command payload
         """
         if target == 'marta':
-            topic = f"{self.TOPIC_BASE_MARTA}/cmd/{command}"
+            topic = f"{self.TOPIC_BASE_MARTA}cmd/{command}"
         else:  # coldroom
-            topic = f"{self.TOPIC_BASE_COLDROOM}/cmd/{command}"
+            topic = f"{self.TOPIC_BASE_COLDROOM}cmd/{command}"
+            print(topic)
         
         logger.info(f"Sending command '{command}' to {target} with payload: {payload}")
         self._client.publish(topic, payload)

@@ -36,7 +36,7 @@ class CAENTCPClient:
                         pass
                 
                 self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self._socket.settimeout(5.0)  # 5 second timeout
+                self._socket.settimeout(600)  # 5 second timeout
                 self._socket.connect((self.ip, self.port))
                 self._connected = True
                 logger.info(f"Connected to CAEN at {self.ip}:{self.port}")
@@ -83,6 +83,7 @@ class CAENTCPClient:
                 return None
                 
         try:
+            print(command)
             with self._lock:
                 # Send command
                 encoded_message = self._encode_message(command)
