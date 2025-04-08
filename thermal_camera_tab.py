@@ -178,8 +178,7 @@ class ThermalCameraTab(QtWidgets.QWidget):
             self.ui.ip_angle_LE,
             self.ui.ip_angle_LE_2,  # This is the 90-degree angle input
             self.ui.ip_abs_pos_LE,
-            self.ui.checkBox,  # Clock-wise checkbox
-            self.ui.checkBox_2,  # Anti-clockwise checkbox
+            self.ui.direction_combo,  # Direction combobox
         ]
         for control in controls:
             control.setEnabled(enabled)
@@ -202,6 +201,61 @@ class ThermalCameraTab(QtWidgets.QWidget):
             logger.info("Thermal camera signals connected")
         except Exception as e:
             logger.error(f"Error connecting signals: {e}")
+
+    def stitch_multiple_images(self, images, positions, temp_min, temp_max, full_coverage=360):
+        """Stitch multiple images from different positions into a panorama"""
+        # Get dimensions of a single image
+        h, w = images[0].shape
+
+        # Calculate total width based on full coverage and FOV
+        total_width = int(w * full_coverage / 20)
+
+        # Create canvas and count arrays for tracking overlaps
+        panorama = np.zeros((h, total_width), dtype=np.float32)
+        overlap_count = np.zeros((h, total_width), dtype=np.float32)
+
+        # Place images on canvas based on absolute position within the full range
+        for img, angle in zip(images, positions):
+            # Calculate x offset based on absolute angle position in the full range
+            # Normalize angle to 0-360 range if needed
+            norm_angle = angle % full_coverage
+            x_offset = int(norm_angle * w / 20)
+
+            # Make sure offset is within bounds
+            if x_offset + w <= total_width:
+                # Add image to panorama (accumulate values)
+                panorama[:, x_offset : x_offset + w] += img
+                # Increment counter for overlapping pixels
+                overlap_count[:, x_offset : x_offset + w] += 1
+            else:
+                # Handle case where image would wrap around
+                wrap_width = total_width - x_offset
+                # Add first part
+                panorama[:, x_offset:] += img[:, :wrap_width]
+                overlap_count[:, x_offset:] += 1
+                # Add second part (wrap around)
+                panorama[:, : w - wrap_width] += img[:, wrap_width:]
+                overlap_count[:, : w - wrap_width] += 1
+
+        # Compute mean for overlapping regions (avoid division by zero)
+        mask = overlap_count > 0
+        panorama[mask] = panorama[mask] / overlap_count[mask]
+
+        # Convert to uint8 for display - use actual temperature range
+        if np.isclose(temp_min, temp_max):
+            temp_max = temp_min + 1.0  # Add a small difference to avoid division by zero
+        
+        # Create normalized array with proper handling of NaN values
+        panorama_norm = np.zeros_like(panorama)
+        valid_mask = ~np.isnan(panorama)
+        panorama_norm[valid_mask] = 255 * (panorama[valid_mask] - temp_min) / (temp_max - temp_min)
+        
+        # Areas without data will be black (0)
+        panorama_norm = np.nan_to_num(panorama_norm, nan=0.0)  # Convert NaNs to 0
+        panorama_norm = np.clip(panorama_norm, 0, 255)  # Ensure values are in valid range
+        panorama_norm = panorama_norm.astype(np.uint8)
+
+        return panorama_norm, panorama
 
     def update_status(self):
         """Update UI with current thermal camera status"""
@@ -267,56 +321,59 @@ class ThermalCameraTab(QtWidgets.QWidget):
                 # Draw camera canvas
                 self.cameras_canvas.draw()
 
-                # Create stitched images using the image_stitching module
+                # Create stitched images using the accumulated data
                 try:
-                    from image_stitching import manual_stitch_images
+                    # Get stitching data from thermal camera
+                    if hasattr(self.system._thermalcamera, "_stitching_data"):
+                        for i, (camera_name, camera_data) in enumerate(self.system._thermalcamera._stitching_data.items()):
+                            if camera_data:  # If we have data for this camera
+                                # Get all images and positions
+                                images = []
+                                positions = []
+                                temp_min = float("inf")
+                                temp_max = float("-inf")
 
-                    # Get current position
-                    current_position = float(self.ui.positionLE.text()) if self.ui.positionLE.text() else 0.0
+                                # Collect all images and positions
+                                for pos, pos_images in camera_data.items():
+                                    if pos_images:  # If we have images at this position
+                                        # Average all images at this position
+                                        avg_img = np.mean(pos_images, axis=0)
+                                        images.append(avg_img)
+                                        positions.append(float(pos))
 
-                    # Create stitched images for each camera
-                    for i, (camera_name, image_data) in enumerate(self.system._thermalcamera._images.items()):
-                        if isinstance(image_data, np.ndarray):
-                            # Create stitched image using the module's functions
-                            temp_min = np.nanmin(image_data)
-                            temp_max = np.nanmax(image_data)
+                                        # Update temperature range
+                                        temp_min = min(temp_min, avg_img.min())
+                                        temp_max = max(temp_max, avg_img.max())
 
-                            # Create a single image panorama
-                            panorama_norm, panorama = manual_stitch_images(
-                                [image_data],  # Single image
-                                [current_position],  # Current position
-                                temp_min,
-                                temp_max,
-                                full_coverage=360,
-                            )
+                                if images:  # If we have any images to stitch
+                                    # Create stitched panorama
+                                    panorama_norm, panorama = self.stitch_multiple_images(
+                                        images, positions, temp_min, temp_max, full_coverage=360
+                                    )
 
-                            # Ensure the panorama is properly sized for 360 degrees
-                            if panorama.shape[1] != 360:
-                                # Resize to 360 degrees if needed
-                                from scipy.ndimage import zoom
+                                    # Ensure the panorama is properly sized for 360 degrees
+                                    if panorama.shape[1] != 360:
+                                        # Resize to 360 degrees if needed
+                                        from scipy.ndimage import zoom
+                                        zoom_factor = (1, 360 / panorama.shape[1])
+                                        panorama = zoom(panorama, zoom_factor, order=1)
 
-                                zoom_factor = (1, 360 / panorama.shape[1])
-                                panorama = zoom(panorama, zoom_factor, order=1)
+                                    # Update the stitched view
+                                    self.stitched_images[i].set_array(panorama)
+                                    self.stitched_images[i].set_clim(temp_min, temp_max)
 
-                            # Update the stitched view
-                            self.stitched_images[i].set_array(panorama)
+                                    # Update colorbar
+                                    cbar = self.stitched_images[i].colorbar
+                                    if cbar is not None:
+                                        cbar.set_ticks(np.linspace(temp_min, temp_max, 5))
+                                        cbar.set_ticklabels([f"{temp:.1f}°C" for temp in np.linspace(temp_min, temp_max, 5)])
 
-                            # Use the same temperature range as the camera view
-                            self.stitched_images[i].set_clim(temp_min, temp_max)
+                                    # Draw canvas
+                                    self.stitched_canvases[i].draw()
 
-                            # Update colorbar
-                            cbar = self.stitched_images[i].colorbar
-                            if cbar is not None:
-                                cbar.set_ticks(np.linspace(temp_min, temp_max, 5))
-                                cbar.set_ticklabels([f"{temp:.1f}°C" for temp in np.linspace(temp_min, temp_max, 5)])
-
-                            # Draw canvas
-                            self.stitched_canvases[i].draw()
-
-                except ImportError as e:
-                    logger.error(f"Failed to import image_stitching module: {e}")
                 except Exception as e:
                     logger.error(f"Error creating stitched images: {e}")
+                    logger.error(f"Error details: {str(e)}", exc_info=True)
 
         except Exception as e:
             logger.error(f"Error updating status: {e}")
@@ -327,12 +384,7 @@ class ThermalCameraTab(QtWidgets.QWidget):
         try:
             angle = float(self.ui.ip_DAngle_LE.text())
             if self.system._thermalcamera:
-                if self.ui.checkBox.isChecked():
-                    direction = "bw"
-                elif self.ui.checkBox_2.isChecked():
-                    direction = "fw"
-                else:
-                    raise ValueError("No direction selected")
+                direction = "bw" if self.ui.direction_combo.currentText() == "Clockwise" else "fw"
                 self.system._thermalcamera.rotate({"angle": angle, "direction": direction})
                 logger.info(f"Rotating camera by {angle} degrees")
         except ValueError:
@@ -358,13 +410,7 @@ class ThermalCameraTab(QtWidgets.QWidget):
             # Use ip_angle_LE_2 which contains the 90-degree angle input
             limit = float(self.ui.ip_angle_LE_2.text())
             if self.system._thermalcamera:
-                if self.system._thermalcamera:
-                    if self.ui.checkBox.isChecked():
-                        direction = "bw"
-                    elif self.ui.checkBox_2.isChecked():
-                        direction = "fw"
-                    else:
-                        raise ValueError("No direction selected")
+                direction = "bw" if self.ui.direction_combo.currentText() == "Clockwise" else "fw"
                 self.system._thermalcamera.calibrate({"prudence": limit, "direction": direction})
                 logger.info(f"Calibrating camera with limit {limit} degrees")
         except ValueError:
