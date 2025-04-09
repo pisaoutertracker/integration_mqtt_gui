@@ -6,7 +6,6 @@ import sys
 import logging
 from thermal_camera import ThermalCameraMQTTClient
 from marta_coldroom import MartaColdRoomMQTTClient
-from cleanroom import CleanRoomMQTTClient
 from caen_client import CAENTCPClient
 
 # Configure logging
@@ -32,7 +31,7 @@ class System:
             logger.error(f"Error loading settings: {e}")
             self._settings = {
                 "mqtt": {"broker": "localhost", "port": 1883},
-                "Cleanroom": {"mqtt_topic": "/cleanroom/#"},
+                "Cleanroom": {"mqtt_topic": "/environment/HumAndTemp001/#"},
                 "MARTA": {"mqtt_topic": "/MARTA/#"},
                 "Coldroom": {"mqtt_topic": "/coldroom/#"},
                 "ThermalCamera": {"mqtt_topic": "/thermalcamera/#"}
@@ -54,17 +53,10 @@ class System:
         logger.info("Initializing MQTT clients...")
         try:
             self._martacoldroom = MartaColdRoomMQTTClient(self)
-            logger.info("MARTA/Coldroom client initialized")
+            logger.info("MARTA/Coldroom/Cleanroom client initialized")
         except Exception as e:
-            logger.error(f"Error initializing MARTA Coldroom client: {e}")
+            logger.error(f"Error initializing MARTA/Coldroom/Cleanroom client: {e}")
             self._martacoldroom = None
-
-        try:
-            self._cleanroom = CleanRoomMQTTClient(self)
-            logger.info("Cleanroom client initialized")
-        except Exception as e:
-            logger.error(f"Error initializing Cleanroom client: {e}")
-            self._cleanroom = None
 
         try:
             self._thermalcamera = ThermalCameraMQTTClient(self)
@@ -81,7 +73,7 @@ class System:
             self._caen = None
 
         # Start MQTT thread if any client is initialized
-        if any([self._martacoldroom, self._cleanroom, self._thermalcamera]):
+        if any([self._martacoldroom, self._thermalcamera]):
             self.start_mqtt_thread()
 
     @property
@@ -163,12 +155,8 @@ class System:
         try:
             # Start client loops
             if self._martacoldroom:
-                logger.debug("Starting MARTA/Coldroom client loops")
+                logger.debug("Starting MARTA/Coldroom/Cleanroom client loops")
                 self._martacoldroom.start_client_loops()
-
-            if self._cleanroom:
-                logger.debug("Starting Cleanroom client loop")
-                self._cleanroom.start_client_loops()
 
             if self._thermalcamera:
                 logger.debug("Starting Thermal Camera client loop")
@@ -206,12 +194,8 @@ class System:
             
             # Stop individual client loops
             if hasattr(self, '_martacoldroom') and self._martacoldroom:
-                logger.debug("Stopping MARTA/Coldroom client loops")
+                logger.debug("Stopping MARTA/Coldroom/Cleanroom client loops")
                 self._martacoldroom.stop_client_loops()
-
-            if hasattr(self, '_cleanroom') and self._cleanroom:
-                logger.debug("Stopping Cleanroom client loops")
-                self._cleanroom.stop_client_loops()
 
             if hasattr(self, '_thermalcamera') and self._thermalcamera:
                 logger.debug("Stopping Thermal Camera client loop")

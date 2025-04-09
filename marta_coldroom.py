@@ -20,6 +20,7 @@ class MartaColdRoomMQTTClient:
         
         # Initialize topics
         self.TOPIC_CLEANROOM = system_obj.settings["Cleanroom"]["mqtt_topic"]
+        # self.TOPIC_BASE_CLEANROOM = "/environment/HumAndTemp001/"  # Direct base path with leading slash
         self.TOPIC_BASE_CLEANROOM = self.TOPIC_CLEANROOM.replace("#", "")
         self.TOPIC_MARTA = system_obj.settings["MARTA"]["mqtt_topic"]
         self.TOPIC_BASE_MARTA = self.TOPIC_MARTA.replace("#", "")
@@ -27,14 +28,14 @@ class MartaColdRoomMQTTClient:
         self.TOPIC_BASE_COLDROOM = self.TOPIC_COLDROOM.replace("#", "")
         self.TOPIC_CO2_SENSOR = system_obj.settings["Coldroom"]["co2_sensor_topic"]
         
-        logger.debug("Initializing MQTT client with topics:")
-        logger.debug(f"Cleanroom topic: {self.TOPIC_CLEANROOM}")
-        logger.debug(f"MARTA topic: {self.TOPIC_MARTA}")
-        logger.debug(f"Coldroom topic: {self.TOPIC_COLDROOM}")
-        logger.debug(f"CO2 sensor topic: {self.TOPIC_CO2_SENSOR}")
+        logger.info("Initializing MQTT client with topics:")
+        logger.info(f"Cleanroom topic: {self.TOPIC_CLEANROOM}")
+        logger.info(f"MARTA topic: {self.TOPIC_MARTA}")
+        logger.info(f"Coldroom topic: {self.TOPIC_COLDROOM}")
+        logger.info(f"CO2 sensor topic: {self.TOPIC_CO2_SENSOR}")
         
         # Create single MQTT client
-        self._client = mqtt.Client(client_id="MARTA_COLDROOM")
+        self._client = mqtt.Client(client_id="MARTA_COLDROOM_CLEANROOM")
         self._client.on_connect = self.on_connect
         self._client.on_message = self.on_message
         
@@ -46,7 +47,13 @@ class MartaColdRoomMQTTClient:
         self._marta_status = {}
         self._coldroom_state = {}
         self._cleanroom_status = {}
+        #     "temperature": None,
+        #     "humidity": None,
+        #     "dewpoint": None,
+        #     "pressure": None
+        # }
         self._co2_sensor_data = {}
+        self._current_topic = None
 
         
         # Connect to broker
@@ -75,53 +82,82 @@ class MartaColdRoomMQTTClient:
 
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
-            logger.debug("Connected to MQTT broker, subscribing to topics...")
+            logger.info("Connected to MQTT broker, subscribing to topics...")
             # Subscribe to all topics
             self._client.subscribe(self.TOPIC_CLEANROOM)
-            logger.debug(f"Subscribed to Cleanroom topic: {self.TOPIC_CLEANROOM}")
+            logger.info(f"Subscribed to Cleanroom topic: {self.TOPIC_CLEANROOM}")
             self._client.subscribe(self.TOPIC_MARTA)
-            logger.debug(f"Subscribed to MARTA topic: {self.TOPIC_MARTA}")
+            logger.info(f"Subscribed to MARTA topic: {self.TOPIC_MARTA}")
             self._client.subscribe(self.TOPIC_COLDROOM)
-            logger.debug(f"Subscribed to Coldroom topic: {self.TOPIC_COLDROOM}")
+            logger.info(f"Subscribed to Coldroom topic: {self.TOPIC_COLDROOM}")
             self._client.subscribe(self.TOPIC_CO2_SENSOR)
-            logger.debug(f"Subscribed to CO2 sensor topic: {self.TOPIC_CO2_SENSOR}")
+            logger.info(f"Subscribed to CO2 sensor topic: {self.TOPIC_CO2_SENSOR}")
         else:
             logger.error(f"Connection failed with result code {rc}")
 
     def on_message(self, client, userdata, msg):
-        logger.debug(f"Received MQTT message on topic: {msg.topic}")
+        logger.info(f"Received MQTT message on topic: {msg.topic}")
+        # logger.info(f"Payload: {msg.payload}")
         try:
             payload = msg.payload.decode()
-            logger.debug(f"Payload: {payload}")
+            logger.info(f"Payload: {payload}")
         except:
             logger.error("Could not decode payload as string")
+            return
 
-        # Handle Cleanroom messages
+        # Store msg.topic for use in handle_cleanroom_status_message
+        self._current_topic = msg.topic
+        logger.info(f"Current topic: {self._current_topic}")
+
+        # Handle Cleanroom messages (with leading slash)
         if msg.topic.startswith(self.TOPIC_BASE_CLEANROOM):
-            if "status" in msg.topic:
-                logger.debug("Processing Cleanroom status message")
-                self.handle_cleanroom_status_message(msg.payload)
-                logger.debug(f"Updated Cleanroom status: {self._cleanroom_status}")
+            logger.info(f"Processing Cleanroom environment message: {msg.topic}")
+            self.handle_cleanroom_status_message(msg.payload)
+            logger.info(f"Updated Cleanroom status: {self._cleanroom_status}")
+            # try:
+            #     value = float(payload)
+            #     if "temperature" in msg.topic:
+            #         self._cleanroom_status["temperature"] = value
+            #         logger.info(f"Updated cleanroom temperature: {value}")
+            #     elif "RH" in msg.topic:
+            #         self._cleanroom_status["humidity"] = value
+            #         logger.info(f"Updated cleanroom humidity: {value}")
+            #     elif "dewpoint" in msg.topic:
+            #         self._cleanroom_status["dewpoint"] = value
+            #         logger.info(f"Updated cleanroom dewpoint: {value}")
+            #     elif "Pressure" in msg.topic or "Presure" in msg.topic:  # Handle both spellings
+            #         self._cleanroom_status["pressure"] = value
+            #         logger.info(f"Updated cleanroom pressure: {value}")
+            #     # Update the system status after any change
+            #     self._system.update_status({"cleanroom": self._cleanroom_status})
+            #     logger.info(f"Updated Cleanroom status: {self._cleanroom_status}")
+            # except ValueError as e:
+            #     logger.error(f"Error converting payload to float: {e}")
+            #     logger.error(f"Raw payload was: {payload}")
+            # except Exception as e:
+            #     logger.error(f"Error processing environment message: {e}")
+            #     logger.error(f"Topic: {msg.topic}, Payload: {payload}")
+
 
         # Handle MARTA messages
-        elif msg.topic.startswith(self.TOPIC_BASE_MARTA):
+        elif msg.topic.startswith(self.TOPIC_BASE_MARTA): # Add MARTA topic
             if "status" in msg.topic:
-                logger.debug("Processing MARTA status message")
+                logger.info("Processing MARTA status message")
                 self.handle_marta_status_message(msg.payload)
-                logger.debug(f"Updated MARTA status: {self._marta_status}")
+                logger.info(f"Updated MARTA status: {self._marta_status}")
 
         # Handle Coldroom messages
-        elif msg.topic.startswith(self.TOPIC_BASE_COLDROOM):
+        elif msg.topic.startswith(self.TOPIC_BASE_COLDROOM): # Add Coldroom topic
             if "state" in msg.topic:
-                logger.debug("Processing Coldroom state message")
+                logger.info("Processing Coldroom state message")
                 self.handle_coldroom_state_message(msg.payload)
-                logger.debug(f"Updated Coldroom state: {self._coldroom_state}")
+                logger.info(f"Updated Coldroom state: {self._coldroom_state}")
         
         # Handle CO2 sensor messages
-        elif msg.topic == self.TOPIC_CO2_SENSOR:
-            logger.debug("Processing CO2 sensor message")
+        elif msg.topic == self.TOPIC_CO2_SENSOR: # Add CO2 sensor topic
+            logger.info("Processing CO2 sensor message")
             self.handle_co2_sensor_message(msg.payload)
-            logger.debug(f"Updated CO2 sensor data: {self._co2_sensor_data}")
+            logger.info(f"Updated CO2 sensor data: {self._co2_sensor_data}")
         else:
             logger.warning(f"Received message on unknown topic: {msg.topic}")
 
@@ -140,11 +176,11 @@ class MartaColdRoomMQTTClient:
             target (str): Either 'marta' or 'coldroom' or 'cleanroom'
             payload: The command payload
         """
-        if target == 'marta':
+        if target == 'marta': # Add MARTA topic
             topic = f"{self.TOPIC_BASE_MARTA}cmd/{command}"
         elif target == 'cleanroom': # Add cleanroom topic
             topic = f"{self.TOPIC_BASE_CLEANROOM}cmd/{command}"
-        else:  # coldroom
+        else:  # Add Coldroom topic
             topic = f"{self.TOPIC_BASE_COLDROOM}cmd/{command}"
             print(topic)
         
@@ -200,11 +236,48 @@ class MartaColdRoomMQTTClient:
 
     def handle_cleanroom_status_message(self, payload):
         try:
-            self._cleanroom_status = json.loads(payload)
-            logger.debug(f"Parsed Cleanroom status: {self._cleanroom_status}")
+            # Parse the payload
+            data = json.loads(payload)
+            logger.info(f"Processing cleanroom data: {data}")
+            
+            # Update cleanroom status based on topic
+            if isinstance(data, dict):
+                if "temperature" in data:
+                    self._cleanroom_status["temperature"] = float(data["temperature"])
+                    logger.info(f"Updated temperature: {self._cleanroom_status['temperature']}")
+                if "RH" in data:
+                    self._cleanroom_status["humidity"] = float(data["RH"])
+                    logger.info(f"Updated humidity: {self._cleanroom_status['humidity']}")
+                if "dewpoint" in data:
+                    self._cleanroom_status["dewpoint"] = float(data["dewpoint"])
+                    logger.info(f"Updated dewpoint: {self._cleanroom_status['dewpoint']}")
+                if "Pressure" in data:
+                    self._cleanroom_status["pressure"] = float(data["Pressure"])
+                    logger.info(f"Updated pressure: {self._cleanroom_status['pressure']}")
+            else:
+                # Handle case where payload is a single value
+                try:
+                    value = float(data)
+                    if "temperature" in self._current_topic:
+                        self._cleanroom_status["temperature"] = value
+                        logger.info(f"Updated temperature from single value: {value}")
+                    elif "RH" in self._current_topic:
+                        self._cleanroom_status["humidity"] = value
+                        logger.info(f"Updated humidity from single value: {value}")
+                    elif "dewpoint" in self._current_topic:
+                        self._cleanroom_status["dewpoint"] = value
+                        logger.info(f"Updated dewpoint from single value: {value}")
+                    elif "Pressure" in self._current_topic:
+                        self._cleanroom_status["pressure"] = value
+                        logger.info(f"Updated pressure from single value: {value}")
+                except (ValueError, TypeError):
+                    logger.error(f"Could not convert payload to float: {data}")
+            
+            logger.info(f"Current cleanroom status: {self._cleanroom_status}")
             self._system.update_status({"cleanroom": self._cleanroom_status})
         except Exception as e:
             logger.error(f"Error parsing Cleanroom status message: {e}")
+            logger.error(f"Payload was: {payload}")
 
     ### COLDROOM ###
 
@@ -212,6 +285,13 @@ class MartaColdRoomMQTTClient:
         try:
             self._coldroom_state = json.loads(payload)
             logger.debug(f"Parsed Coldroom state: {self._coldroom_state}")
+            
+            # Update control states
+            if "ch_temperature_status" in self._coldroom_state:
+                self._coldroom_state["temperature_control"] = self._coldroom_state["ch_temperature_status"]
+            if "ch_humidity_status" in self._coldroom_state:
+                self._coldroom_state["humidity_control"] = self._coldroom_state["ch_humidity_status"]
+                
             self._system.update_status({"coldroom": self._coldroom_state})
         except Exception as e:
             logger.error(f"Error parsing Coldroom state message: {e}")
