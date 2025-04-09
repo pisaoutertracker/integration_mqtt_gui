@@ -31,8 +31,12 @@ class ThermalCameraMQTTClient:
         self._client.on_message = self.on_message
         self._client.on_disconnect = self.on_disconnect
 
+        # Set connection parameters
+        self._client.keepalive = 60
+        self._client.connect_timeout = 5
+
         try:
-            self._client.connect(self._system.BROKER, self._system.PORT)
+            self._client.connect(self._system.BROKER, self._system.PORT, keepalive=60)
             logger.info(f"Connected to MQTT broker at {self._system.BROKER}:{self._system.PORT}")
         except Exception as e:
             logger.error(f"Failed to connect to MQTT broker: {e}")

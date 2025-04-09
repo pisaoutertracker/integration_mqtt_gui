@@ -19,6 +19,8 @@ class MartaColdRoomMQTTClient:
         self._system = system_obj
         
         # Initialize topics
+        self.TOPIC_CLEANROOM = system_obj.settings["Cleanroom"]["mqtt_topic"]
+        self.TOPIC_BASE_CLEANROOM = self.TOPIC_CLEANROOM.replace("#", "")
         self.TOPIC_MARTA = system_obj.settings["MARTA"]["mqtt_topic"]
         self.TOPIC_BASE_MARTA = self.TOPIC_MARTA.replace("#", "")
         self.TOPIC_COLDROOM = system_obj.settings["Coldroom"]["mqtt_topic"]
@@ -26,6 +28,7 @@ class MartaColdRoomMQTTClient:
         self.TOPIC_CO2_SENSOR = system_obj.settings["Coldroom"]["co2_sensor_topic"]
         
         logger.debug("Initializing MQTT client with topics:")
+        logger.debug(f"Cleanroom topic: {self.TOPIC_CLEANROOM}")
         logger.debug(f"MARTA topic: {self.TOPIC_MARTA}")
         logger.debug(f"Coldroom topic: {self.TOPIC_COLDROOM}")
         logger.debug(f"CO2 sensor topic: {self.TOPIC_CO2_SENSOR}")
@@ -35,15 +38,21 @@ class MartaColdRoomMQTTClient:
         self._client.on_connect = self.on_connect
         self._client.on_message = self.on_message
         
+        # Set connection parameters
+        self._client.keepalive = 60
+        self._client.connect_timeout = 5
+        
         # Initialize status dictionaries
         self._marta_status = {}
         self._coldroom_state = {}
+        self._cleanroom_status = {}
         self._co2_sensor_data = {}
+
         
         # Connect to broker
         try:
             logger.debug(f"Connecting to MQTT broker at {self._system.BROKER}:{self._system.PORT}")
-            self._client.connect(self._system.BROKER, self._system.PORT)
+            self._client.connect(self._system.BROKER, self._system.PORT, keepalive=60)
             logger.debug("MQTT client connected successfully")
         except Exception as e:
             logger.error(f"Error connecting to MQTT broker: {e}")
@@ -68,6 +77,8 @@ class MartaColdRoomMQTTClient:
         if rc == 0:
             logger.debug("Connected to MQTT broker, subscribing to topics...")
             # Subscribe to all topics
+            self._client.subscribe(self.TOPIC_CLEANROOM)
+            logger.debug(f"Subscribed to Cleanroom topic: {self.TOPIC_CLEANROOM}")
             self._client.subscribe(self.TOPIC_MARTA)
             logger.debug(f"Subscribed to MARTA topic: {self.TOPIC_MARTA}")
             self._client.subscribe(self.TOPIC_COLDROOM)
@@ -85,13 +96,20 @@ class MartaColdRoomMQTTClient:
         except:
             logger.error("Could not decode payload as string")
 
+        # Handle Cleanroom messages
+        if msg.topic.startswith(self.TOPIC_BASE_CLEANROOM):
+            if "status" in msg.topic:
+                logger.debug("Processing Cleanroom status message")
+                self.handle_cleanroom_status_message(msg.payload)
+                logger.debug(f"Updated Cleanroom status: {self._cleanroom_status}")
+
         # Handle MARTA messages
-        if msg.topic.startswith(self.TOPIC_BASE_MARTA):
+        elif msg.topic.startswith(self.TOPIC_BASE_MARTA):
             if "status" in msg.topic:
                 logger.debug("Processing MARTA status message")
                 self.handle_marta_status_message(msg.payload)
                 logger.debug(f"Updated MARTA status: {self._marta_status}")
-                
+
         # Handle Coldroom messages
         elif msg.topic.startswith(self.TOPIC_BASE_COLDROOM):
             if "state" in msg.topic:
@@ -115,15 +133,17 @@ class MartaColdRoomMQTTClient:
 
     def publish_cmd(self, command, target, payload):
         """
-        Publish a command to either MARTA or Coldroom
+        Publish a command to either MARTA or Coldroom or Cleanroom
         
         Args:
             command (str): The command to send
-            target (str): Either 'marta' or 'coldroom'
+            target (str): Either 'marta' or 'coldroom' or 'cleanroom'
             payload: The command payload
         """
         if target == 'marta':
             topic = f"{self.TOPIC_BASE_MARTA}cmd/{command}"
+        elif target == 'cleanroom': # Add cleanroom topic
+            topic = f"{self.TOPIC_BASE_CLEANROOM}cmd/{command}"
         else:  # coldroom
             topic = f"{self.TOPIC_BASE_COLDROOM}cmd/{command}"
             print(topic)
@@ -175,6 +195,16 @@ class MartaColdRoomMQTTClient:
 
     def refresh(self, payload):
         self.publish_cmd("refresh", 'marta', payload)
+
+    ### CLEANROOM ###
+
+    def handle_cleanroom_status_message(self, payload):
+        try:
+            self._cleanroom_status = json.loads(payload)
+            logger.debug(f"Parsed Cleanroom status: {self._cleanroom_status}")
+            self._system.update_status({"cleanroom": self._cleanroom_status})
+        except Exception as e:
+            logger.error(f"Error parsing Cleanroom status message: {e}")
 
     ### COLDROOM ###
 
@@ -230,9 +260,14 @@ class MartaColdRoomMQTTClient:
         return self._marta_status
 
     @property
+    def cleanroom_status(self):
+        return self._cleanroom_status
+
+    @property
     def coldroom_state(self):
         return self._coldroom_state
 
     @property
     def door_locked(self):
         return self._system.safety_flags.get("door_locked", True)  # Default to True (safe) if not available
+

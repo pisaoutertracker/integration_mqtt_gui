@@ -65,6 +65,8 @@ class MainApp(QtWidgets.QMainWindow):
         # Create a temporary QMainWindow to load the UI
         temp_window = QtWidgets.QMainWindow()
         marta_ui_file = os.path.join("MARTA_Cold_Room_TAB", "marta_coldroom_tab.ui")
+        # marta_ui_file = os.path.join("C:\Users\sdhani\Desktop\integration_mqtt_gui-main\integration_mqtt_gui-main\MARTA_Cold_Room_TAB", "marta_coldroom_tab.ui")
+        # marta_ui_file = r"C:\Users\sdhani\Desktop\integration_mqtt_gui-main\integration_mqtt_gui-main\MARTA_Cold_Room_TAB\marta_coldroom_tab.ui"
         uic.loadUi(marta_ui_file, temp_window)
         
         # Create a QWidget for our tab and get the central widget from temp_window
@@ -236,8 +238,34 @@ class MainApp(QtWidgets.QMainWindow):
         # Get the central widget
         central = self.marta_coldroom_tab
         
-        # Update Cold Room values from system status
+        # Update Cleanroom values from system status
         try:
+            if 'cleanroom' in self.system.status:
+                cleanroom = self.system.status['cleanroom']
+                logger.debug(f"Updating Cleanroom UI with status: {cleanroom}")
+                
+                # Temperature
+                label = central.findChild(QtWidgets.QLabel, "cleanroom_temp_value_label")
+                if label and 'temperature' in cleanroom:
+                    temp_value = cleanroom['temperature']
+                    label.setText(f"{temp_value:.1f}")
+                    logger.debug(f"Updated Cleanroom temperature: {temp_value}")
+                
+                # Humidity
+                label = central.findChild(QtWidgets.QLabel, "cleanroom_humidity_value_label")
+                if label and 'humidity' in cleanroom:
+                    humid_value = cleanroom['humidity']
+                    label.setText(f"{humid_value:.1f}")
+                    logger.debug(f"Updated Cleanroom humidity: {humid_value}")
+                
+                # Dewpoint
+                label = central.findChild(QtWidgets.QLabel, "cleanroom_dewpoint_value_label")
+                if label and 'dewpoint' in cleanroom:
+                    dewpoint = cleanroom['dewpoint']
+                    label.setText(f"{dewpoint:.1f}")
+                    logger.debug(f"Updated Cleanroom dewpoint: {dewpoint}")
+            
+            # Update Cold Room values from system status
             if 'coldroom' in self.system.status:
                 coldroom = self.system.status['coldroom']
                 logger.debug(f"Updating Coldroom UI with status: {coldroom}")
@@ -252,10 +280,10 @@ class MainApp(QtWidgets.QMainWindow):
                         logger.debug(f"Updated temperature: {temp_value}")
                     
                     # Temperature setpoint
-                    spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "coldroom_temp_spinbox")
-                    if spinbox:
-                        setpoint = coldroom['ch_temperature'].get('setpoint', spinbox.value())
-                        spinbox.setValue(setpoint)
+                    lineedit = central.findChild(QtWidgets.QLineEdit, "coldroom_temp_LE")
+                    if lineedit:
+                        setpoint = coldroom['ch_temperature'].get('setpoint', lineedit.text())
+                        lineedit.setText(str(setpoint))
                         logger.debug(f"Updated temperature setpoint: {setpoint}")
                     
                     # Temperature control status
@@ -275,10 +303,10 @@ class MainApp(QtWidgets.QMainWindow):
                         logger.debug(f"Updated humidity: {humid_value}")
                     
                     # Humidity setpoint
-                    spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "coldroom_humidity_spinbox")
-                    if spinbox:
-                        setpoint = coldroom['ch_humidity'].get('setpoint', spinbox.value())
-                        spinbox.setValue(setpoint)
+                    lineedit = central.findChild(QtWidgets.QLineEdit, "coldroom_humidity_LE")
+                    if lineedit:
+                        setpoint = coldroom['ch_humidity'].get('setpoint', lineedit.text())
+                        lineedit.setText(str(setpoint))
                         logger.debug(f"Updated humidity setpoint: {setpoint}")
                     
                     # Humidity control status
@@ -385,26 +413,26 @@ class MainApp(QtWidgets.QMainWindow):
                         logger.debug(f"Updated MARTA return pressure: {pressure_value}")
 
                 # Temperature setpoint
-                spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_temp_spinbox")
-                if spinbox:
-                    temp_setpoint = marta.get('temperature_setpoint', spinbox.value())
-                    spinbox.setValue(temp_setpoint)
+                lineedit = central.findChild(QtWidgets.QLineEdit, "marta_temp_LE")
+                if lineedit:
+                    temp_setpoint = marta.get('temperature_setpoint', lineedit.text())
+                    lineedit.setText(str(temp_setpoint))
                     logger.debug(f"Updated MARTA temperature setpoint: {temp_setpoint}")
                 
                 # Flow setpoint (affects speed)
                 if 'flow_setpoint' in marta:
-                    spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_flow_spinbox")
-                    if spinbox:
+                    lineedit = central.findChild(QtWidgets.QLineEdit, "marta_flow_LE")
+                    if lineedit:
                         flow_value = marta['flow_setpoint']
-                        spinbox.setValue(flow_value)
+                        lineedit.setText(str(flow_value))
                         logger.debug(f"Updated MARTA flow setpoint: {flow_value}")
                 
                 # Speed setpoint
                 if 'speed_setpoint' in marta:
-                    spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_speed_spinbox")
-                    if spinbox:
+                    lineedit = central.findChild(QtWidgets.QLineEdit, "marta_speed_LE")
+                    if lineedit:
                         speed_value = marta['speed_setpoint']
-                        spinbox.setValue(speed_value)
+                        lineedit.setText(str(speed_value))
                         logger.debug(f"Updated MARTA speed setpoint: {speed_value}")
                 
                 # Update FSM state in status bar if available
@@ -428,21 +456,26 @@ class MainApp(QtWidgets.QMainWindow):
             logger.warning(msg)
             return
             
-        spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "coldroom_temp_spinbox")
-        if not spinbox:
+        lineedit = central.findChild(QtWidgets.QLineEdit, "coldroom_temp_LE")
+        if not lineedit:
             msg = "Cannot find temperature input field"
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
             
-        value = spinbox.value()
-        if self.system._martacoldroom:
-            self.system._martacoldroom.set_temperature(str(value))
-            msg = f"Set coldroom temperature to {value}°C"
-            self.statusBar().showMessage(msg)
-            logger.info(msg)
-        else:
-            msg = "MARTA Cold Room client not initialized"
+        try:
+            value = float(lineedit.text())
+            if self.system._martacoldroom:
+                self.system._martacoldroom.set_temperature(str(value))
+                msg = f"Set coldroom temperature to {value}°C"
+                self.statusBar().showMessage(msg)
+                logger.info(msg)
+            else:
+                msg = "MARTA Cold Room client not initialized"
+                self.statusBar().showMessage(msg)
+                logger.error(msg)
+        except ValueError:
+            msg = "Invalid temperature value"
             self.statusBar().showMessage(msg)
             logger.error(msg)
     
@@ -456,21 +489,26 @@ class MainApp(QtWidgets.QMainWindow):
             logger.warning(msg)
             return
             
-        spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "coldroom_humidity_spinbox")
-        if not spinbox:
+        lineedit = central.findChild(QtWidgets.QLineEdit, "coldroom_humidity_LE")
+        if not lineedit:
             msg = "Cannot find humidity input field"
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
             
-        value = spinbox.value()
-        if self.system._martacoldroom:
-            self.system._martacoldroom.set_humidity(str(value))
-            msg = f"Set coldroom humidity to {value}%"
-            self.statusBar().showMessage(msg)
-            logger.info(msg)
-        else:
-            msg = "MARTA Cold Room client not initialized"
+        try:
+            value = float(lineedit.text())
+            if self.system._martacoldroom:
+                self.system._martacoldroom.set_humidity(str(value))
+                msg = f"Set coldroom humidity to {value}%"
+                self.statusBar().showMessage(msg)
+                logger.info(msg)
+            else:
+                msg = "MARTA Cold Room client not initialized"
+                self.statusBar().showMessage(msg)
+                logger.error(msg)
+        except ValueError:
+            msg = "Invalid humidity value"
             self.statusBar().showMessage(msg)
             logger.error(msg)
     
@@ -583,36 +621,41 @@ class MainApp(QtWidgets.QMainWindow):
     # MARTA CO2 Plant control methods
     def set_marta_temperature(self):
         central = self.marta_coldroom_tab
-        spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_temp_spinbox")
+        lineedit = central.findChild(QtWidgets.QLineEdit, "marta_temp_LE")
         
-        if not spinbox:
+        if not lineedit:
             msg = "Cannot find MARTA temperature input field"
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
             
-        value = spinbox.value()
-        if self.system._martacoldroom:
-            self.system._martacoldroom.set_temperature_setpoint(str(value))
-            msg = f"Set MARTA temperature to {value}°C"
-            self.statusBar().showMessage(msg)
-            logger.info(msg)
-        else:
-            msg = "MARTA Cold Room client not initialized"
+        try:
+            value = float(lineedit.text())
+            if self.system._martacoldroom:
+                self.system._martacoldroom.set_temperature_setpoint(str(value))
+                msg = f"Set MARTA temperature to {value}°C"
+                self.statusBar().showMessage(msg)
+                logger.info(msg)
+            else:
+                msg = "MARTA Cold Room client not initialized"
+                self.statusBar().showMessage(msg)
+                logger.error(msg)
+        except ValueError:
+            msg = "Invalid temperature value"
             self.statusBar().showMessage(msg)
             logger.error(msg)
     
     def set_marta_humidity(self):
         central = self.marta_coldroom_tab
-        spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_humidity_set_PB")
+        lineedit = central.findChild(QtWidgets.QLineEdit, "marta_humidity_LE")
         
-        if not spinbox:
+        if not lineedit:
             msg = "Cannot find MARTA humidity input field"
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
             
-        value = spinbox.value()
+        value = float(lineedit.text())
         # This would need to be implemented in the MARTA control system
         msg = f"Set MARTA humidity to {value}% (not implemented)"
         self.statusBar().showMessage(msg)
@@ -664,15 +707,15 @@ class MainApp(QtWidgets.QMainWindow):
     
     def set_marta_co2(self):
         central = self.marta_coldroom_tab
-        spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_co2_set_PB")
+        lineedit = central.findChild(QtWidgets.QLineEdit, "marta_co2_LE")
         
-        if not spinbox:
+        if not lineedit:
             msg = "Cannot find MARTA CO2 input field"
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
             
-        value = spinbox.value()
+        value = float(lineedit.text())
         if self.system._martacoldroom:
             # This would need a specific command for CO2 control
             self.system._martacoldroom.publish_cmd("set_co2", self.system._martacoldroom._marta_client, str(value))
@@ -686,43 +729,53 @@ class MainApp(QtWidgets.QMainWindow):
     
     def set_marta_flow(self):
         central = self.marta_coldroom_tab
-        spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_flow_spinbox")
+        lineedit = central.findChild(QtWidgets.QLineEdit, "marta_flow_LE")
         
-        if not spinbox:
+        if not lineedit:
             msg = "Cannot find MARTA flow input field"
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
             
-        value = spinbox.value()
-        if self.system._martacoldroom:
-            self.system._martacoldroom.set_flow_setpoint(str(value))
-            msg = f"Set MARTA flow to {value}"
-            self.statusBar().showMessage(msg)
-            logger.info(msg)
-        else:
-            msg = "MARTA Cold Room client not initialized"
+        try:
+            value = float(lineedit.text())
+            if self.system._martacoldroom:
+                self.system._martacoldroom.set_flow_setpoint(str(value))
+                msg = f"Set MARTA flow to {value}"
+                self.statusBar().showMessage(msg)
+                logger.info(msg)
+            else:
+                msg = "MARTA Cold Room client not initialized"
+                self.statusBar().showMessage(msg)
+                logger.error(msg)
+        except ValueError:
+            msg = "Invalid flow value"
             self.statusBar().showMessage(msg)
             logger.error(msg)
     
     def set_marta_speed(self):
         central = self.marta_coldroom_tab
-        spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_speed_spinbox")
+        lineedit = central.findChild(QtWidgets.QLineEdit, "marta_speed_LE")
         
-        if not spinbox:
+        if not lineedit:
             msg = "Cannot find MARTA speed input field"
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
             
-        value = spinbox.value()
-        if self.system._martacoldroom:
-            self.system._martacoldroom.set_speed_setpoint(str(value))
-            msg = f"Set MARTA speed to {value} RPM"
-            self.statusBar().showMessage(msg)
-            logger.info(msg)
-        else:
-            msg = "MARTA Cold Room client not initialized"
+        try:
+            value = float(lineedit.text())
+            if self.system._martacoldroom:
+                self.system._martacoldroom.set_speed_setpoint(str(value))
+                msg = f"Set MARTA speed to {value} RPM"
+                self.statusBar().showMessage(msg)
+                logger.info(msg)
+            else:
+                msg = "MARTA Cold Room client not initialized"
+                self.statusBar().showMessage(msg)
+                logger.error(msg)
+        except ValueError:
+            msg = "Invalid speed value"
             self.statusBar().showMessage(msg)
             logger.error(msg)
     
@@ -767,6 +820,7 @@ class MainApp(QtWidgets.QMainWindow):
             self.system.settings["Coldroom"]["mqtt_topic"] = self.settings_tab.coldroomTopicLineEdit.text()
             self.system.settings["Coldroom"]["co2_sensor_topic"] = self.settings_tab.co2SensorTopicLineEdit.text()
             self.system.settings["ThermalCamera"]["mqtt_topic"] = self.settings_tab.thermalCameraTopicLineEdit.text()
+            self.system.settings["Cleanroom"]["mqtt_topic"] = self.settings_tab.cleanroomTopicLineEdit.text()
             
             # Write to file
             with open("settings.yaml", "w") as f:
