@@ -39,10 +39,55 @@ class MainApp(QtWidgets.QMainWindow):
     
     def closeEvent(self, event):
         """Handle application close event"""
-        # Cleanup resources
-        logger.info("Application closing, cleaning up resources...")
-        if hasattr(self, 'system'):
-            self.system.cleanup()
+        try:
+            logger.info("Application closing, cleaning up resources...")
+            
+            # Stop the update timer
+            if hasattr(self, 'update_timer'):
+                self.update_timer.stop()
+                logger.debug("Stopped update timer")
+            
+            # Cleanup CAEN GUI if it exists
+            if hasattr(self, 'caen_gui'):
+                self.caen_gui.cleanup()
+                logger.debug("Cleaned up CAEN GUI")
+            
+            # Cleanup Thermal Camera tab if it exists
+            if hasattr(self, 'thermal_camera_tab'):
+                self.thermal_camera_tab.cleanup()
+                logger.debug("Cleaned up Thermal Camera tab")
+            
+            # Cleanup MQTT connection
+            if hasattr(self, 'system') and hasattr(self.system, 'mqtt_client'):
+                self.system.mqtt_client.disconnect()
+                self.system.mqtt_client.loop_stop()
+                logger.debug("Disconnected MQTT client")
+            
+            # Cleanup MARTA Cold Room client
+            if hasattr(self, 'system') and hasattr(self.system, '_martacoldroom'):
+                self.system._martacoldroom.disconnect()
+                logger.debug("Disconnected MARTA Cold Room client")
+            
+            # Cleanup system resources
+            if hasattr(self, 'system'):
+                self.system.cleanup()
+                logger.debug("Cleaned up system resources")
+            
+            # Close all tabs
+            if hasattr(self, 'tab_widget'):
+                for i in range(self.tab_widget.count()):
+                    widget = self.tab_widget.widget(i)
+                    if hasattr(widget, 'cleanup'):
+                        widget.cleanup()
+                logger.debug("Cleaned up all tabs")
+            
+            logger.info("All resources cleaned up successfully")
+            
+        except Exception as e:
+            logger.error(f"Error during cleanup: {str(e)}")
+            # Still accept the close event even if cleanup fails
+            event.accept()
+            return
         
         # Accept the close event
         event.accept()
@@ -65,8 +110,6 @@ class MainApp(QtWidgets.QMainWindow):
         # Create a temporary QMainWindow to load the UI
         temp_window = QtWidgets.QMainWindow()
         marta_ui_file = os.path.join("MARTA_Cold_Room_TAB", "marta_coldroom_tab.ui")
-        # marta_ui_file = os.path.join("C:\Users\sdhani\Desktop\integration_mqtt_gui-main\integration_mqtt_gui-main\MARTA_Cold_Room_TAB", "marta_coldroom_tab.ui")
-        # marta_ui_file = r"C:\Users\sdhani\Desktop\integration_mqtt_gui-main\integration_mqtt_gui-main\MARTA_Cold_Room_TAB\marta_coldroom_tab.ui"
         uic.loadUi(marta_ui_file, temp_window)
         
         # Create a QWidget for our tab and get the central widget from temp_window
@@ -128,35 +171,34 @@ class MainApp(QtWidgets.QMainWindow):
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_light_toggle_PB")
         if button:
             button.clicked.connect(self.toggle_coldroom_light)
-            
-        button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_run_toggle_PB")
-        if button:
-            button.clicked.connect(self.toggle_coldroom_run)
-            
+        
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_dry_toggle_PB")
         if button:
-            button.clicked.connect(self.toggle_coldroom_dry)
-            
+            button.clicked.connect(self.toggle_coldroom_dry)    
+        
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_door_toggle_PB")
         if button:
             button.clicked.connect(self.toggle_coldroom_door)
-            
+        # Connect Cold Room checkboxes
+        button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_temp_ctrl_PB")
+        if button:
+            button.clicked.connect(self.toggle_coldroom_temp_control)        
+
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_temp_set_PB")
         if button:
             button.clicked.connect(self.set_coldroom_temperature)
+
+        button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_humidity_ctrl_PB")
+        if button:
+            button.clicked.connect(self.toggle_coldroom_humidity_control)
             
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_humidity_set_PB")
         if button:
             button.clicked.connect(self.set_coldroom_humidity)
-            
-        # Connect Cold Room checkboxes
-        checkbox = self.marta_coldroom_tab.findChild(QtWidgets.QCheckBox, "coldroom_temp_ctrl_CB")
-        if checkbox:
-            checkbox.clicked.connect(self.toggle_coldroom_temp_control)
-            
-        checkbox = self.marta_coldroom_tab.findChild(QtWidgets.QCheckBox, "coldroom_humidity_ctrl_CB")
-        if checkbox:
-            checkbox.clicked.connect(self.toggle_coldroom_humidity_control)
+
+        button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_run_toggle_PB")
+        if button:
+            button.clicked.connect(self.toggle_coldroom_run)            
             
         # MARTA CO2 Plant controls
         # Temperature controls
@@ -278,18 +320,24 @@ class MainApp(QtWidgets.QMainWindow):
                 logger.debug(f"Updating Coldroom UI with status: {coldroom}")
                 
                 # Temperature control LED
-                led = central.findChild(QtWidgets.QFrame, "ctrl_temp_LED")
-                if led and 'temperature_control' in coldroom:
-                    is_active = coldroom['temperature_control'] == 1
-                    led.setStyleSheet("background-color: green;" if is_active else "background-color: red;")
-                    logger.debug(f"Updated temperature control LED: {'green' if is_active else 'red'}")
-                
+                if 'ch_temperature' in coldroom: 
+                    if 'status' in coldroom['ch_temperature']:
+                        # print("status read", coldroom["ch_temperature"]["status"]) # 1 = ON, 0 = OFF
+                        # Update Temperature control LED
+                        ctrl_temp_led = central.findChild(QtWidgets.QFrame, "ctrl_temp_LED")
+                        if ctrl_temp_led:
+                            ctrl_temp_led.setStyleSheet("background-color: green;" if coldroom['ch_temperature']['status'] else "background-color: black;") # LED is green when ON
+                            logger.debug(f"Updated temp control LED: {'green' if coldroom['ch_temperature']['status'] else 'black'}") 
+
                 # Humidity control LED
-                led = central.findChild(QtWidgets.QFrame, "ctrl_humidity_LED")
-                if led and 'humidity_control' in coldroom:
-                    is_active = coldroom['humidity_control'] == 1
-                    led.setStyleSheet("background-color: green;" if is_active else "background-color: red;")
-                    logger.debug(f"Updated humidity control LED: {'green' if is_active else 'red'}")
+                if 'ch_humidity' in coldroom:
+                    if 'status' in coldroom['ch_humidity']:
+                        # print("status read", coldroom["ch_humidity"]["status"]) # 1 = ON, 0 = OFF
+                        # Update Humidity control LED
+                        ctrl_humidity_led = central.findChild(QtWidgets.QFrame, "ctrl_humidity_LED")
+                        if ctrl_humidity_led:
+                            ctrl_humidity_led.setStyleSheet("background-color: green;" if coldroom['ch_humidity']['status'] else "background-color: black;") # LED is green when ON
+                            logger.debug(f"Updated humidity control LED: {'green' if coldroom['ch_humidity']['status'] else 'black'}")    
                 
                 # Temperature
                 if 'ch_temperature' in coldroom:
@@ -307,12 +355,6 @@ class MainApp(QtWidgets.QMainWindow):
                         lineedit.setText(str(setpoint))
                         logger.debug(f"Updated temperature setpoint: {setpoint}")
                     
-                    # Temperature control status
-                    checkbox = central.findChild(QtWidgets.QCheckBox, "coldroom_temp_ctrl_CB")
-                    if checkbox:
-                        is_active = coldroom['ch_temperature'].get('status', 0) == 1
-                        checkbox.setChecked(is_active)
-                        logger.debug(f"Updated temperature control: {is_active}")
                 
                 # Humidity
                 if 'ch_humidity' in coldroom:
@@ -330,13 +372,6 @@ class MainApp(QtWidgets.QMainWindow):
                         lineedit.setText(str(setpoint))
                         logger.debug(f"Updated humidity setpoint: {setpoint}")
                     
-                    # Humidity control status
-                    checkbox = central.findChild(QtWidgets.QCheckBox, "coldroom_humidity_ctrl_CB")
-                    if checkbox:
-                        is_active = coldroom['ch_humidity'].get('status', 0) == 1
-                        checkbox.setChecked(is_active)
-                        logger.debug(f"Updated humidity control: {is_active}")
-                
                 # Dewpoint (from coldroom data)
                 label = central.findChild(QtWidgets.QLabel, "coldroom_dewpoint_value_label")
                 if label and 'dew_point_c' in coldroom:
@@ -349,7 +384,7 @@ class MainApp(QtWidgets.QMainWindow):
                     # Update light LED
                     light_led = central.findChild(QtWidgets.QFrame, "light_LED")
                     if light_led:
-                        light_led.setStyleSheet("background-color: yellow;" if coldroom['light'] else "background-color: black;")
+                        light_led.setStyleSheet("background-color: yellow;" if coldroom['light'] else "background-color: black;") # LED is yellow when ON
                         logger.debug(f"Updated light LED: {'yellow' if coldroom['light'] else 'black'}")
                 
                 # Door status and LED
@@ -434,26 +469,26 @@ class MainApp(QtWidgets.QMainWindow):
                         logger.debug(f"Updated MARTA return pressure: {pressure_value}")
 
                 # Temperature setpoint
-                lineedit = central.findChild(QtWidgets.QLineEdit, "marta_temp_LE")
-                if lineedit:
-                    temp_setpoint = marta.get('temperature_setpoint', lineedit.text())
-                    lineedit.setText(str(temp_setpoint))
+                spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_temp_spinbox")
+                if spinbox:
+                    temp_setpoint = marta.get('temperature_setpoint', spinbox.value())
+                    spinbox.setValue(temp_setpoint)
                     logger.debug(f"Updated MARTA temperature setpoint: {temp_setpoint}")
                 
                 # Flow setpoint (affects speed)
                 if 'flow_setpoint' in marta:
-                    lineedit = central.findChild(QtWidgets.QLineEdit, "marta_flow_LE")
-                    if lineedit:
+                    spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_flow_spinbox")
+                    if spinbox:
                         flow_value = marta['flow_setpoint']
-                        lineedit.setText(str(flow_value))
+                        spinbox.setValue(flow_value)
                         logger.debug(f"Updated MARTA flow setpoint: {flow_value}")
                 
                 # Speed setpoint
                 if 'speed_setpoint' in marta:
-                    lineedit = central.findChild(QtWidgets.QLineEdit, "marta_speed_LE")
-                    if lineedit:
+                    spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_speed_spinbox")
+                    if spinbox:
                         speed_value = marta['speed_setpoint']
-                        lineedit.setText(str(speed_value))
+                        spinbox.setValue(speed_value)
                         logger.debug(f"Updated MARTA speed setpoint: {speed_value}")
                 
                 # Update FSM state in status bar if available
@@ -467,22 +502,35 @@ class MainApp(QtWidgets.QMainWindow):
             self.statusBar().showMessage(error_msg)
     
     # Cold Room control methods
+    
     def set_coldroom_temperature(self):
-        central = self.marta_coldroom_tab
+        central = self.marta_coldroom_tab    
+        # Check if temperature control is enabled
+        coldroom = self.system.status.get('coldroom', {})
+        if not coldroom['ch_temperature'].get('status', False):
+            msg = "Temperature control is not enabled. Please enable temperature control first."
+            self.statusBar().showMessage(msg)
+            logger.warning(msg)
+            return
+
         lineedit = central.findChild(QtWidgets.QLineEdit, "coldroom_temp_LE")
-        
         if not lineedit:
             msg = "Cannot find temperature input field"
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
-            
+
         try:
             value = float(lineedit.text())
-            # Log instead of publishing
-            msg = f"Would publish coldroom temperature setpoint: {value}°C"
-            logger.info(msg)
-            self.statusBar().showMessage(msg)
+            if self.system._martacoldroom:
+                self.system._martacoldroom.set_temperature(str(value))
+                msg = f"Set coldroom temperature to {value}°C"
+                self.statusBar().showMessage(msg)
+                logger.info(msg)
+            else:
+                msg = "MARTA Cold Room client not initialized"
+                self.statusBar().showMessage(msg)
+                logger.error(msg)
         except ValueError:
             msg = "Invalid temperature value"
             self.statusBar().showMessage(msg)
@@ -490,36 +538,56 @@ class MainApp(QtWidgets.QMainWindow):
     
     def set_coldroom_humidity(self):
         central = self.marta_coldroom_tab
-        lineedit = central.findChild(QtWidgets.QLineEdit, "coldroom_humidity_LE")
+        # Check if humidity control is enabled
+        coldroom = self.system.status.get('coldroom', {})
+        if not coldroom['ch_humidity'].get('status', False):
+            msg = "Humidity control is not enabled. Please enable humidity control first."
+            self.statusBar().showMessage(msg)
+            logger.warning(msg)
+            return
         
+        lineedit = central.findChild(QtWidgets.QLineEdit, "coldroom_humidity_LE")
         if not lineedit:
             msg = "Cannot find humidity input field"
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
-            
+
         try:
             value = float(lineedit.text())
-            # Log instead of publishing
-            msg = f"Would publish coldroom humidity setpoint: {value}%"
-            logger.info(msg)
-            self.statusBar().showMessage(msg)
+            if self.system._martacoldroom:
+                self.system._martacoldroom.set_humidity(str(value))
+                msg = f"Set coldroom humidity to {value}%"
+                self.statusBar().showMessage(msg)
+                logger.info(msg)
+            else:
+                msg = "MARTA Cold Room client not initialized"
+                self.statusBar().showMessage(msg)
+                logger.error(msg)
         except ValueError:
             msg = "Invalid humidity value"
             self.statusBar().showMessage(msg)
             logger.error(msg)
-    
+
     def toggle_coldroom_light(self):
-        # Log instead of publishing
-        msg = "Would toggle coldroom light"
-        logger.info(msg)
-        self.statusBar().showMessage(msg)
-    
+        coldroom = self.system.status.get('coldroom', {})
+        current_state = coldroom.get('light', 0)
+        new_state = 0 if current_state else 1
+        if self.system._martacoldroom:
+            self.system._martacoldroom.control_light(str(new_state))
+            msg = f"Set coldroom light to {'ON' if new_state else 'OFF'}"
+            self.statusBar().showMessage(msg)
+            logger.info(msg)
+        else:
+            msg = "MARTA Cold Room client not initialized"
+            self.statusBar().showMessage(msg)
+            logger.error(msg)
+
     def toggle_coldroom_run(self):
         coldroom = self.system.status.get('coldroom', {})
         current_state = coldroom.get('run_state', 0)
         new_state = 0 if current_state else 1
-        
+ 
         if self.system._martacoldroom:
             if new_state:
                 self.system._martacoldroom.run(str(new_state))
@@ -533,18 +601,27 @@ class MainApp(QtWidgets.QMainWindow):
             msg = "MARTA Cold Room client not initialized"
             self.statusBar().showMessage(msg)
             logger.error(msg)
-    
+
     def toggle_coldroom_dry(self):
-        # Log instead of publishing
-        msg = "Would toggle coldroom dry air"
-        logger.info(msg)
-        self.statusBar().showMessage(msg)
-    
+        coldroom = self.system.status.get('coldroom', {})
+        current_state = coldroom.get('external_dry_air', 0)
+        new_state = 0 if current_state else 1
+        if self.system._martacoldroom:
+            self.system._martacoldroom.control_external_dry_air(str(new_state))
+            msg = f"Set external dry air to {'ON' if new_state else 'OFF'}"
+            self.statusBar().showMessage(msg)
+            logger.info(msg)
+        else:
+            msg = "MARTA Cold Room client not initialized"
+            self.statusBar().showMessage(msg)
+            logger.error(msg)
+
+
     def toggle_coldroom_door(self):
         coldroom = self.system.status.get('coldroom', {})
         current_state = coldroom.get('door_state', 0)
         new_state = 0 if current_state else 1
-        
+ 
         # This would normally require safety checks
         if self.system._martacoldroom:
             # For demo purposes, we're just toggling the state
@@ -556,49 +633,37 @@ class MainApp(QtWidgets.QMainWindow):
             msg = "MARTA Cold Room client not initialized"
             self.statusBar().showMessage(msg)
             logger.error(msg)
-    
+
     def toggle_coldroom_temp_control(self):
-        central = self.marta_coldroom_tab
-        checkbox = central.findChild(QtWidgets.QCheckBox, "coldroom_temp_ctrl_CB")
+        coldroom = self.system.status.get('coldroom', {})
+        current_state = coldroom.get('ch_temperature_status', False)
+        new_state = not current_state  # Toggle the state
         
-        if not checkbox:
-            msg = "Cannot find temperature control checkbox"
-            self.statusBar().showMessage(msg)
-            logger.error(msg)
-            return
-            
-        state = 1 if checkbox.isChecked() else 0
         if self.system._martacoldroom:
-            self.system._martacoldroom.control_temperature(str(state))
-            msg = f"Set temperature control to {'ON' if state else 'OFF'}"
+            self.system._martacoldroom.control_temperature(str(int(new_state)))
+            msg = f"Temperature control {'enabled' if new_state else 'disabled'}"
             self.statusBar().showMessage(msg)
             logger.info(msg)
         else:
             msg = "MARTA Cold Room client not initialized"
             self.statusBar().showMessage(msg)
             logger.error(msg)
-    
+
     def toggle_coldroom_humidity_control(self):
-        central = self.marta_coldroom_tab
-        checkbox = central.findChild(QtWidgets.QCheckBox, "coldroom_humidity_ctrl_CB")
+        coldroom = self.system.status.get('coldroom', {})
+        current_state = coldroom.get('ch_humidity_status', False)
+        new_state = not current_state  # Toggle the state
         
-        if not checkbox:
-            msg = "Cannot find humidity control checkbox"
-            self.statusBar().showMessage(msg)
-            logger.error(msg)
-            return
-            
-        state = 1 if checkbox.isChecked() else 0
         if self.system._martacoldroom:
-            self.system._martacoldroom.control_humidity(str(state))
-            msg = f"Set humidity control to {'ON' if state else 'OFF'}"
+            self.system._martacoldroom.control_humidity(str(int(new_state)))
+            msg = f"Humidity control {'enabled' if new_state else 'disabled'}"
             self.statusBar().showMessage(msg)
             logger.info(msg)
         else:
             msg = "MARTA Cold Room client not initialized"
             self.statusBar().showMessage(msg)
             logger.error(msg)
-    
+
     # MARTA CO2 Plant control methods
     def set_marta_temperature(self):
         central = self.marta_coldroom_tab
@@ -609,13 +674,18 @@ class MainApp(QtWidgets.QMainWindow):
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
-            
+
         try:
             value = float(lineedit.text())
-            # Log instead of publishing
-            msg = f"Would publish MARTA temperature setpoint: {value}°C"
-            logger.info(msg)
-            self.statusBar().showMessage(msg)
+            if self.system._martacoldroom:
+                self.system._martacoldroom.set_temperature_setpoint(str(value))
+                msg = f"Set MARTA temperature to {value}°C"
+                self.statusBar().showMessage(msg)
+                logger.info(msg)
+            else:
+                msg = "MARTA Cold Room client not initialized"
+                self.statusBar().showMessage(msg)
+                logger.error(msg)
         except ValueError:
             msg = "Invalid temperature value"
             self.statusBar().showMessage(msg)
@@ -630,13 +700,18 @@ class MainApp(QtWidgets.QMainWindow):
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
-            
+        
         try:
             value = float(lineedit.text())
-            # Log instead of publishing
-            msg = f"Would publish MARTA humidity setpoint: {value}%"
-            logger.info(msg)
-            self.statusBar().showMessage(msg)
+            if self.system._martacoldroom:
+                self.system._martacoldroom.set_humidity_setpoint(str(value))
+                msg = f"Set MARTA humidity to {value}%"
+                self.statusBar().showMessage(msg)
+                logger.info(msg)
+            else:
+                msg = "MARTA Cold Room client not initialized"
+                self.statusBar().showMessage(msg)
+                logger.error(msg)
         except ValueError:
             msg = "Invalid humidity value"
             self.statusBar().showMessage(msg)
@@ -717,17 +792,23 @@ class MainApp(QtWidgets.QMainWindow):
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
-            
+
         try:
             value = float(lineedit.text())
-            # Log instead of publishing
-            msg = f"Would publish MARTA flow setpoint: {value}"
-            logger.info(msg)
-            self.statusBar().showMessage(msg)
+            if self.system._martacoldroom:
+                self.system._martacoldroom.set_flow_setpoint(str(value))
+                msg = f"Set MARTA flow to {value}"
+                self.statusBar().showMessage(msg)
+                logger.info(msg)
+            else:
+                msg = "MARTA Cold Room client not initialized"
+                self.statusBar().showMessage(msg)
+                logger.error(msg)
         except ValueError:
             msg = "Invalid flow value"
             self.statusBar().showMessage(msg)
             logger.error(msg)
+
     
     def set_marta_speed(self):
         central = self.marta_coldroom_tab
@@ -738,13 +819,18 @@ class MainApp(QtWidgets.QMainWindow):
             self.statusBar().showMessage(msg)
             logger.error(msg)
             return
-            
+
         try:
             value = float(lineedit.text())
-            # Log instead of publishing
-            msg = f"Would publish MARTA speed setpoint: {value} RPM"
-            logger.info(msg)
-            self.statusBar().showMessage(msg)
+            if self.system._martacoldroom:
+                self.system._martacoldroom.set_speed_setpoint(str(value))
+                msg = f"Set MARTA speed to {value} RPM"
+                self.statusBar().showMessage(msg)
+                logger.info(msg)
+            else:
+                msg = "MARTA Cold Room client not initialized"
+                self.statusBar().showMessage(msg)
+                logger.error(msg)
         except ValueError:
             msg = "Invalid speed value"
             self.statusBar().showMessage(msg)

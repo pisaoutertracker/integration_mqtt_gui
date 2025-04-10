@@ -20,7 +20,6 @@ class MartaColdRoomMQTTClient:
         
         # Initialize topics
         self.TOPIC_CLEANROOM = system_obj.settings["Cleanroom"]["mqtt_topic"]
-        # self.TOPIC_BASE_CLEANROOM = "/environment/HumAndTemp001/"  # Direct base path with leading slash
         self.TOPIC_BASE_CLEANROOM = self.TOPIC_CLEANROOM.replace("#", "")
         self.TOPIC_MARTA = system_obj.settings["MARTA"]["mqtt_topic"]
         self.TOPIC_BASE_MARTA = self.TOPIC_MARTA.replace("#", "")
@@ -47,11 +46,6 @@ class MartaColdRoomMQTTClient:
         self._marta_status = {}
         self._coldroom_state = {}
         self._cleanroom_status = {}
-        #     "temperature": None,
-        #     "humidity": None,
-        #     "dewpoint": None,
-        #     "pressure": None
-        # }
         self._co2_sensor_data = {}
         self._current_topic = None
 
@@ -114,29 +108,6 @@ class MartaColdRoomMQTTClient:
             logger.info(f"Processing Cleanroom environment message: {msg.topic}")
             self.handle_cleanroom_status_message(msg.payload)
             logger.info(f"Updated Cleanroom status: {self._cleanroom_status}")
-            # try:
-            #     value = float(payload)
-            #     if "temperature" in msg.topic:
-            #         self._cleanroom_status["temperature"] = value
-            #         logger.info(f"Updated cleanroom temperature: {value}")
-            #     elif "RH" in msg.topic:
-            #         self._cleanroom_status["humidity"] = value
-            #         logger.info(f"Updated cleanroom humidity: {value}")
-            #     elif "dewpoint" in msg.topic:
-            #         self._cleanroom_status["dewpoint"] = value
-            #         logger.info(f"Updated cleanroom dewpoint: {value}")
-            #     elif "Pressure" in msg.topic or "Presure" in msg.topic:  # Handle both spellings
-            #         self._cleanroom_status["pressure"] = value
-            #         logger.info(f"Updated cleanroom pressure: {value}")
-            #     # Update the system status after any change
-            #     self._system.update_status({"cleanroom": self._cleanroom_status})
-            #     logger.info(f"Updated Cleanroom status: {self._cleanroom_status}")
-            # except ValueError as e:
-            #     logger.error(f"Error converting payload to float: {e}")
-            #     logger.error(f"Raw payload was: {payload}")
-            # except Exception as e:
-            #     logger.error(f"Error processing environment message: {e}")
-            #     logger.error(f"Topic: {msg.topic}, Payload: {payload}")
 
 
         # Handle MARTA messages

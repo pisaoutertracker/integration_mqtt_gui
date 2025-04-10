@@ -584,7 +584,7 @@
         </widget>
        </item>
        <item row="0" column="3">
-        <widget class="QFrame" name="crtl_temp_LED">
+        <widget class="QFrame" name="ctrl_temp_LED">
          <property name="minimumSize">
           <size>
            <width>30</width>
@@ -654,7 +654,7 @@
         </widget>
        </item>
        <item row="1" column="3">
-        <widget class="QFrame" name="crtl_humidity_LED">
+        <widget class="QFrame" name="ctrl_humidity_LED">
          <property name="minimumSize">
           <size>
            <width>30</width>
@@ -757,7 +757,7 @@
      <x>0</x>
      <y>0</y>
      <width>1123</width>
-     <height>21</height>
+     <height>22</height>
     </rect>
    </property>
   </widget>
