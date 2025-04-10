@@ -110,7 +110,7 @@ class MartaColdRoomMQTTClient:
         logger.info(f"Current topic: {self._current_topic}")
 
         # Handle Cleanroom messages (with leading slash)
-        if msg.topic.startswith(self.TOPIC_BASE_CLEANROOM):
+        if msg.topic.startswith(self.TOPIC_BASE_CLEANROOM[:-1]):
             logger.info(f"Processing Cleanroom environment message: {msg.topic}")
             self.handle_cleanroom_status_message(msg.payload)
             logger.info(f"Updated Cleanroom status: {self._cleanroom_status}")
@@ -182,7 +182,6 @@ class MartaColdRoomMQTTClient:
             topic = f"{self.TOPIC_BASE_CLEANROOM}cmd/{command}"
         else:  # Add Coldroom topic
             topic = f"{self.TOPIC_BASE_COLDROOM}cmd/{command}"
-            print(topic)
         
         logger.info(f"Sending command '{command}' to {target} with payload: {payload}")
         self._client.publish(topic, payload)
