@@ -86,6 +86,7 @@ class MartaColdRoomMQTTClient:
             logger.info(f"Subscribed to Coldroom topic: {self.TOPIC_COLDROOM}")
             self._client.subscribe(self.TOPIC_CO2_SENSOR)
             logger.info(f"Subscribed to CO2 sensor topic: {self.TOPIC_CO2_SENSOR}")
+
         else:
             logger.error(f"Connection failed with result code {rc}")
 
@@ -210,13 +211,22 @@ class MartaColdRoomMQTTClient:
             data = json.loads(payload)
             logger.info(f"Processing cleanroom data: {data}")
             
+            # Initialize cleanroom status if empty
+            if not self._cleanroom_status:
+                self._cleanroom_status = {
+                    "temperature": None,
+                    "humidity": None,
+                    "dewpoint": None,
+                    "pressure": None
+                }
+            
             # Update cleanroom status based on topic
             if isinstance(data, dict):
-                if "temperature" in data:
-                    self._cleanroom_status["temperature"] = float(data["temperature"])
+                if "temperature" in data or "temp" in data:
+                    self._cleanroom_status["temperature"] = float(data.get("temperature", data.get("temp")))
                     logger.info(f"Updated temperature: {self._cleanroom_status['temperature']}")
-                if "RH" in data:
-                    self._cleanroom_status["humidity"] = float(data["RH"])
+                if "RH" in data or "humidity" in data:
+                    self._cleanroom_status["humidity"] = float(data.get("RH", data.get("humidity")))
                     logger.info(f"Updated humidity: {self._cleanroom_status['humidity']}")
                 if "dewpoint" in data:
                     self._cleanroom_status["dewpoint"] = float(data["dewpoint"])
@@ -224,24 +234,6 @@ class MartaColdRoomMQTTClient:
                 if "Pressure" in data:
                     self._cleanroom_status["pressure"] = float(data["Pressure"])
                     logger.info(f"Updated pressure: {self._cleanroom_status['pressure']}")
-            else:
-                # Handle case where payload is a single value
-                try:
-                    value = float(data)
-                    if "temperature" in self._current_topic:
-                        self._cleanroom_status["temperature"] = value
-                        logger.info(f"Updated temperature from single value: {value}")
-                    elif "RH" in self._current_topic:
-                        self._cleanroom_status["humidity"] = value
-                        logger.info(f"Updated humidity from single value: {value}")
-                    elif "dewpoint" in self._current_topic:
-                        self._cleanroom_status["dewpoint"] = value
-                        logger.info(f"Updated dewpoint from single value: {value}")
-                    elif "Pressure" in self._current_topic:
-                        self._cleanroom_status["pressure"] = value
-                        logger.info(f"Updated pressure from single value: {value}")
-                except (ValueError, TypeError):
-                    logger.error(f"Could not convert payload to float: {data}")
             
             logger.info(f"Current cleanroom status: {self._cleanroom_status}")
             self._system.update_status({"cleanroom": self._cleanroom_status})
@@ -257,10 +249,12 @@ class MartaColdRoomMQTTClient:
             logger.debug(f"Parsed Coldroom state: {self._coldroom_state}")
             
             # Update control states
-            if "ch_temperature_status" in self._coldroom_state:
-                self._coldroom_state["temperature_control"] = self._coldroom_state["ch_temperature_status"]
-            if "ch_humidity_status" in self._coldroom_state:
-                self._coldroom_state["humidity_control"] = self._coldroom_state["ch_humidity_status"]
+            if 'ch_temperature' in self._coldroom_state: 
+                if 'status' in self._coldroom_state['ch_temperature']:
+                    self._coldroom_state["temperature_control"] = self._coldroom_state['ch_temperature']['status']
+            if 'ch_humidity' in self._coldroom_state: 
+                if 'status' in self._coldroom_state['ch_humidity']:
+                    self._coldroom_state["humidity_control"] = self._coldroom_state['ch_humidity']['status']
                 
             self._system.update_status({"coldroom": self._coldroom_state})
         except Exception as e:
