@@ -36,7 +36,7 @@
          <item row="3" column="0">
           <widget class="QLabel" name="cleanroom_presure_label">
            <property name="text">
-            <string>Pressure</string>
+            <string>Pressure (milibar)</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignCenter</set>
@@ -46,7 +46,7 @@
          <item row="2" column="0">
           <widget class="QLabel" name="cleanroom_dewpoint_label">
            <property name="text">
-            <string>Dew Point :</string>
+            <string>Dew Point (C) :</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignCenter</set>
@@ -310,7 +310,7 @@
        <item row="2" column="0">
         <widget class="QLabel" name="coldroom_dewpoint_label">
          <property name="text">
-          <string>Dew Point :</string>
+          <string>Dew Point (C) :</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>
@@ -587,7 +587,7 @@
        <item row="4" column="0">
         <widget class="QLabel" name="marta_speed_label">
          <property name="text">
-          <string>Speed</string>
+          <string>Speed (RPM)</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>

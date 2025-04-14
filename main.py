@@ -167,8 +167,17 @@ class MainApp(QtWidgets.QMainWindow):
     def connect_signals(self):
         # Connect settings tab
         self.settings_tab.saveButton.clicked.connect(self.save_settings)
+
+        def configure_line_edit(field_name, placeholder):
+            le = self.marta_coldroom_tab.findChild(QtWidgets.QLineEdit, field_name)
+            if le:
+                le.setPlaceholderText(placeholder)
+                le.setStyleSheet("QLineEdit { color: grey; }")
+            
+                # Connect signals
+                le.textChanged.connect(lambda: le.setStyleSheet("QLineEdit { color: black; }"))
+                le.editingFinished.connect(lambda: le.setPlaceholderText(placeholder) if le.text() == "" else None)
         
-        # Connect Cold Room controls
         # Light controls
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_light_toggle_PB")
         if button:
@@ -183,11 +192,46 @@ class MainApp(QtWidgets.QMainWindow):
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_door_toggle_PB")
         if button:
             button.clicked.connect(self.toggle_coldroom_door)
-        
+
         # Temperature controls
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_temp_ctrl_PB")
         if button:
-            button.clicked.connect(self.toggle_coldroom_temp_control)        
+            button.clicked.connect(self.toggle_coldroom_temp_control)
+        
+        configure_line_edit("coldroom_temp_LE", "-20°C to 10°C")
+        configure_line_edit("coldroom_humidity_LE", "20% to 80%")
+        # Temperature setpoint label
+        label = self.marta_coldroom_tab.findChild(QtWidgets.QLabel, "coldroom_temp_set_point_label")
+        if label:
+            logger.debug("Connected temperature set point label")
+        # Humidity setpoint label  
+        label = self.marta_coldroom_tab.findChild(QtWidgets.QLabel, "coldroom_humidity_set_point_label")
+        if label:
+            logger.debug("Connected humidity set point label")
+        # Temperature control LED
+        ctrl_temp_led = self.marta_coldroom_tab.findChild(QtWidgets.QFrame, "ctrl_temp_LED")
+        if ctrl_temp_led:
+            logger.debug("Connected temperature control LED")
+        # Humidity control LED
+        ctrl_humidity_led = self.marta_coldroom_tab.findChild(QtWidgets.QFrame, "ctrl_humidity_LED")
+        if ctrl_humidity_led:
+            logger.debug("Connected humidity control LED")
+        # Light control LED
+        light_led = self.marta_coldroom_tab.findChild(QtWidgets.QFrame, "light_LED")
+        if light_led:
+            logger.debug("Connected light control LED")
+        # Dry air control LED
+        dry_air_led = self.marta_coldroom_tab.findChild(QtWidgets.QFrame, "dryair_LED")
+        if dry_air_led: 
+            logger.debug("Connected dry air control LED")
+        # Safe to open LED
+        safe_to_open_led = self.marta_coldroom_tab.findChild(QtWidgets.QFrame, "safe_to_open_LED")
+        if safe_to_open_led:
+            logger.debug("Connected safe to open LED")
+        # Door state label 
+        label = self.marta_coldroom_tab.findChild(QtWidgets.QLabel, "coldroom_door_state_label")
+        if label:   
+            logger.debug("Connected door state label")
 
         # Temperature setpoint controls
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_temp_set_PB")
@@ -213,17 +257,20 @@ class MainApp(QtWidgets.QMainWindow):
         # Temperature controls
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "marta_temp_set_PB")
         if button:
-            button.clicked.connect(self.set_marta_temperature)
+            button.clicked.connect(self.set_marta_temperature)    
+        configure_line_edit("marta_temp_LE", "-35°C to 25°C") # Placeholder for temperature input
 
         #Speed controls
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "marta_speed_set_PB")
         if button:
             button.clicked.connect(self.set_marta_speed)
-        
+        configure_line_edit("marta_speed_LE", "0 to 6000 RPM")  # Placeholder for speed input
+
         #Flow controls
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "marta_flow_set_PB")
         if button:
             button.clicked.connect(self.set_marta_flow)
+        configure_line_edit("marta_flow_LE", "0 to 5 L/min")  # Placeholder for flow input
         
         # Supply temperature label
         label = self.marta_coldroom_tab.findChild(QtWidgets.QLabel, "marta_temp_supply_value_label")
@@ -314,6 +361,15 @@ class MainApp(QtWidgets.QMainWindow):
         
         for checkbox in self.marta_coldroom_tab.findChildren(QtWidgets.QCheckBox):
             logger.debug(f"Found checkbox: {checkbox.objectName()}")
+        
+        # Update validators to match placeholder ranges
+        temp_lineedit_coldroom = self.marta_coldroom_tab.findChild(QtWidgets.QLineEdit, "coldroom_temp_LE")
+        if temp_lineedit_coldroom:
+            temp_lineedit_coldroom.setValidator(QtGui.QDoubleValidator(-20, 10, 2))  # Matches placeholder
+        
+        humid_lineedit_coldroom = self.marta_coldroom_tab.findChild(QtWidgets.QLineEdit, "coldroom_humidity_LE")
+        if humid_lineedit_coldroom:
+            humid_lineedit_coldroom.setValidator(QtGui.QDoubleValidator(20, 80, 2))
 
         # Add input validation for numeric fields
         temp_lineedit = self.marta_coldroom_tab.findChild(QtWidgets.QLineEdit, "marta_temp_LE")
@@ -332,7 +388,6 @@ class MainApp(QtWidgets.QMainWindow):
         if flow_lineedit:
             validator = QtGui.QDoubleValidator(0, 5, 2)  # min, max, decimals
             flow_lineedit.setValidator(validator)
-
     
     def connect_mqtt(self):
         """Connect to MQTT broker using settings"""
@@ -451,7 +506,7 @@ class MainApp(QtWidgets.QMainWindow):
                 
                 # Temperature setpoint label
                 if 'ch_temperature' in coldroom:
-                    if 'setpoint' in coldroom['ch_temperature'] and coldroom_temp_lE_active_flag == True:
+                    if 'setpoint' in coldroom['ch_temperature']:
                         label = central.findChild(QtWidgets.QLabel, "coldroom_temp_set_point_label")
                         if label:
                             temp_setpoint = coldroom['ch_temperature']['setpoint']
@@ -498,7 +553,7 @@ class MainApp(QtWidgets.QMainWindow):
 
                 # Humidity setpoint label
                 if 'ch_humidity' in coldroom:
-                    if 'setpoint' in coldroom['ch_humidity'] and coldroom_humidity_lE_active_flag == True:
+                    if 'setpoint' in coldroom['ch_humidity']:
                         label = central.findChild(QtWidgets.QLabel, "coldroom_humidity_set_point_label")
                         if label:
                             humid_setpoint = coldroom['ch_humidity']['setpoint']
@@ -637,7 +692,7 @@ class MainApp(QtWidgets.QMainWindow):
                         logger.debug("Cleared MARTA temperature setpoint")
                 
                 #Temperature setpoint label
-                if 'temperature_setpoint' in marta and marta_temp_lE_active_flag == True:
+                if 'temperature_setpoint' in marta:
                     label = central.findChild(QtWidgets.QLabel, "marta_temp_set_point_label")
                     if label:
                         temp_setpoint = marta['temperature_setpoint']
@@ -691,7 +746,7 @@ class MainApp(QtWidgets.QMainWindow):
                             logger.debug("Cleared MARTA speed setpoint")
                 
                 # Speed setpoint label
-                if 'speed_setpoint' in marta and marta_speed_lE_active_flag == True:
+                if 'speed_setpoint' in marta:
                     label = central.findChild(QtWidgets.QLabel, "marta_speed_set_point_label")
                     if label:
                         speed_setpoint = marta['speed_setpoint']
@@ -706,15 +761,7 @@ class MainApp(QtWidgets.QMainWindow):
                     ctrl_flow_led = central.findChild(QtWidgets.QFrame, "marta_flow_flag_LED")
                     if ctrl_flow_led:
                         ctrl_flow_led.setStyleSheet("background-color: green;" if marta['set_flow_active'] else "background-color: black;") # LED is green when ON
-                        logger.debug(f"Updated flow control LED: {'green' if marta['set_flow_active'] else 'black'}")  
-
-                # Flow setpoint (affects speed)
-                if 'flow_setpoint' in marta:
-                    label = central.findChild(QtWidgets.QLabel, "marta_flow_set_point_label")
-                    if label:
-                        flow_setpoint = marta['flow_setpoint']
-                        label.setText(f"{flow_setpoint:.1f}")
-                        logger.debug(f"Updated MARTA flow setpoint: {flow_setpoint}")   
+                        logger.debug(f"Updated flow control LED: {'green' if marta['set_flow_active'] else 'black'}")   
 
                 # Flow setpoint lineedit
                 if 'set_flow_setpoint' in marta:
@@ -733,6 +780,14 @@ class MainApp(QtWidgets.QMainWindow):
                             lineedit.clear()
                             logger.debug("Cleared MARTA flow setpoint")
 
+                # Flow setpoint (affects speed)
+                if 'flow_setpoint' in marta:
+                    label = central.findChild(QtWidgets.QLabel, "marta_flow_set_point_label")
+                    if label:
+                        flow_setpoint = marta['flow_setpoint']
+                        label.setText(f"{flow_setpoint:.1f}")
+                        logger.debug(f"Updated MARTA flow setpoint: {flow_setpoint}")  
+                        
                 # =========================================================================================== MARTA FSM STATE PROCESS ===========================================================================================
                 # Update FSM state in status bar if available
                 if 'fsm_state' in marta:
@@ -744,9 +799,7 @@ class MainApp(QtWidgets.QMainWindow):
             error_msg = f"Error updating UI: {str(e)}"
             logger.error(error_msg)
             self.statusBar().showMessage(error_msg)
-    
-    # Cold Room control methods
-    
+
     def set_coldroom_temperature(self):
         central = self.marta_coldroom_tab    
         # Check if temperature control is enabled
