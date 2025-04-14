@@ -249,7 +249,22 @@ class MainApp(QtWidgets.QMainWindow):
         label = self.marta_coldroom_tab.findChild(QtWidgets.QLabel, "marta_speed_value_label")
         if label:
             logger.debug("Connected speed label")
-            
+        
+        # Temperature Set Point Label
+        label =  self.marta_coldroom_tab.findChild(QtWidgets.QLabel, "marta_temp_set_point_label")
+        if label:
+            logger.debug("Connected temperature set point label")
+
+        # Speed Set Point Label
+        label =  self.marta_coldroom_tab.findChild(QtWidgets.QLabel, "marta_speed_set_point_label")
+        if label:
+            logger.debug("Connected speed set point label")
+
+        # Flow Set Point Label
+        label =  self.marta_coldroom_tab.findChild(QtWidgets.QLabel, "marta_flow_set_point_label")
+        if label:
+            logger.debug("Connected flow set point label")
+
         # Other MARTA controls
         # Start chiller button
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "marta_chiller_start_PB")
@@ -349,6 +364,9 @@ class MainApp(QtWidgets.QMainWindow):
             # Get the central widget
             central = self.marta_coldroom_tab
             
+            #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+            # =========================================================================================== CLEANROOM    ===========================================================================================
+            #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
             # Update Cleanroom values from system status
             if 'cleanroom' in self.system.status:
                 cleanroom = self.system.status['cleanroom']
@@ -381,7 +399,10 @@ class MainApp(QtWidgets.QMainWindow):
                     pressure = cleanroom['pressure']
                     label.setText(f"{pressure:.1f}")
                     logger.debug(f"Updated Cleanroom pressure: {pressure}")
-            
+
+            #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+            # =========================================================================================== COLDROOM    ===========================================================================================
+            #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
             # Update Cold Room values from system status
             if 'coldroom' in self.system.status:
                 coldroom = self.system.status['coldroom']
@@ -390,27 +411,9 @@ class MainApp(QtWidgets.QMainWindow):
                 temp_control_active = coldroom.get('ch_temperature', {}).get('status', False)
                 hum_control_active = coldroom.get('ch_humidity', {}).get('status', False)
 
-                # Temperature control LED
-                if 'ch_temperature' in coldroom: 
-                    if 'status' in coldroom['ch_temperature']:
-                        # print("status read", coldroom["ch_temperature"]["status"]) # 1 = ON, 0 = OFF
-                        # Update Temperature control LED
-                        ctrl_temp_led = central.findChild(QtWidgets.QFrame, "ctrl_temp_LED")
-                        if ctrl_temp_led:
-                            ctrl_temp_led.setStyleSheet("background-color: green;" if coldroom['ch_temperature']['status'] else "background-color: black;") # LED is green when ON
-                            logger.debug(f"Updated temp control LED: {'green' if coldroom['ch_temperature']['status'] else 'black'}") 
-
-                # Humidity control LED
-                if 'ch_humidity' in coldroom:
-                    if 'status' in coldroom['ch_humidity']:
-                        # print("status read", coldroom["ch_humidity"]["status"]) # 1 = ON, 0 = OFF
-                        # Update Humidity control LED
-                        ctrl_humidity_led = central.findChild(QtWidgets.QFrame, "ctrl_humidity_LED")
-                        if ctrl_humidity_led:
-                            ctrl_humidity_led.setStyleSheet("background-color: green;" if coldroom['ch_humidity']['status'] else "background-color: black;") # LED is green when ON
-                            logger.debug(f"Updated humidity control LED: {'green' if coldroom['ch_humidity']['status'] else 'black'}")    
+                # =========================================================================================== COLDROOM TEMPERATURE PROCESS ===========================================================================================
                 
-                # Temperature
+                # Temperature Current Value
                 if 'ch_temperature' in coldroom:
                     # Current temperature
                     label = central.findChild(QtWidgets.QLabel, "coldroom_temp_value_label")
@@ -418,8 +421,17 @@ class MainApp(QtWidgets.QMainWindow):
                         temp_value = coldroom['ch_temperature'].get('value', '?')
                         label.setText(f"{temp_value:.1f}")
                         logger.debug(f"Updated temperature: {temp_value}")
-                    
-                # Temperature setpoint
+
+                # Temperature control LED
+                if 'ch_temperature' in coldroom: 
+                    if 'status' in coldroom['ch_temperature']:
+                        # Update Temperature control LED
+                        ctrl_temp_led = central.findChild(QtWidgets.QFrame, "ctrl_temp_LED")
+                        if ctrl_temp_led:
+                            ctrl_temp_led.setStyleSheet("background-color: green;" if coldroom['ch_temperature']['status'] else "background-color: black;") # LED is green when ON
+                            logger.debug(f"Updated temp control LED: {'green' if coldroom['ch_temperature']['status'] else 'black'}") 
+
+                # Temperature setpoint lineedit
                 lineedit = central.findChild(QtWidgets.QLineEdit, "coldroom_temp_LE")
                 if lineedit:
                     user_has_entered_value = bool(lineedit.text().strip())
@@ -428,15 +440,27 @@ class MainApp(QtWidgets.QMainWindow):
                         pass
                     # Case 2: User has entered a value - use that value
                     elif temp_control_active and user_has_entered_value:
+                        coldroom_temp_lE_active_flag = True
                         setpoint = lineedit.text()
                         lineedit.setText(str(setpoint))
                         logger.debug(f"Updated temperature setpoint: {setpoint}")
                     else:
+                        coldroom_temp_lE_active_flag = False
                         lineedit.clear()
-                        logger.debug("Cleared temperature setpoint")
-                    
+                        logger.debug("Cleared temperature setpoint") 
                 
-                # Humidity
+                # Temperature setpoint label
+                if 'ch_temperature' in coldroom:
+                    if 'setpoint' in coldroom['ch_temperature'] and coldroom_temp_lE_active_flag == True:
+                        label = central.findChild(QtWidgets.QLabel, "coldroom_temp_set_point_label")
+                        if label:
+                            temp_setpoint = coldroom['ch_temperature']['setpoint']
+                        label.setText(f"{temp_setpoint:.1f}")
+                        logger.debug(f"Updated temperature setpoint: {temp_setpoint}")       
+
+                # =========================================================================================== COLDROOM HUMIDITY PROCESS ===========================================================================================
+                
+                # Humidity Current Value
                 if 'ch_humidity' in coldroom:
                     # Current humidity
                     label = central.findChild(QtWidgets.QLabel, "coldroom_humidity_value_label")
@@ -445,7 +469,16 @@ class MainApp(QtWidgets.QMainWindow):
                         label.setText(f"{humid_value:.1f}")
                         logger.debug(f"Updated humidity: {humid_value}")
                 
-                # Humidity setpoint
+                # Humidity control LED
+                if 'ch_humidity' in coldroom:
+                    if 'status' in coldroom['ch_humidity']:
+                        # Update Humidity control LED
+                        ctrl_humidity_led = central.findChild(QtWidgets.QFrame, "ctrl_humidity_LED")
+                        if ctrl_humidity_led:
+                            ctrl_humidity_led.setStyleSheet("background-color: green;" if coldroom['ch_humidity']['status'] else "background-color: black;") # LED is green when ON
+                            logger.debug(f"Updated humidity control LED: {'green' if coldroom['ch_humidity']['status'] else 'black'}")    
+                
+                # Humidity setpoint lineedit
                 lineedit = central.findChild(QtWidgets.QLineEdit, "coldroom_humidity_LE")
                 if lineedit:
                     user_has_entered_value = bool(lineedit.text().strip())
@@ -454,21 +487,25 @@ class MainApp(QtWidgets.QMainWindow):
                         pass    
                     # Case 2: User has entered a value - use that value
                     elif hum_control_active and user_has_entered_value:
+                        coldroom_humidity_lE_active_flag = True
                         setpoint = lineedit.text()
                         lineedit.setText(str(setpoint))
                         logger.debug(f"Updated humidity setpoint: {setpoint}")
                     else:
+                        coldroom_humidity_lE_active_flag = False
                         lineedit.clear()
                         logger.debug("Cleared humidity setpoint")   
 
-                # # Humidity setpoint
-                # if 'ch_humidity' in coldroom:
-                #     lineedit = central.findChild(QtWidgets.QLineEdit, "coldroom_humidity_LE")
-                #     if lineedit and not lineedit.hasFocus():
-                #         setpoint = coldroom['ch_humidity'].get('setpoint', lineedit.text())
-                #         lineedit.setText(str(setpoint))
-                #         logger.debug(f"Updated humidity setpoint: {setpoint}")
+                # Humidity setpoint label
+                if 'ch_humidity' in coldroom:
+                    if 'setpoint' in coldroom['ch_humidity'] and coldroom_humidity_lE_active_flag == True:
+                        label = central.findChild(QtWidgets.QLabel, "coldroom_humidity_set_point_label")
+                        if label:
+                            humid_setpoint = coldroom['ch_humidity']['setpoint']
+                            label.setText(f"{humid_setpoint:.1f}")
+                            logger.debug(f"Updated humidity setpoint: {humid_setpoint}")
                     
+                # =========================================================================================== COLDROOM DEWPOINT PROCESS ===========================================================================================
                 # Dewpoint (from coldroom data)
                 label = central.findChild(QtWidgets.QLabel, "coldroom_dewpoint_value_label")
                 if label and 'dew_point_c' in coldroom:
@@ -476,6 +513,7 @@ class MainApp(QtWidgets.QMainWindow):
                     label.setText(f"{dewpoint:.1f}")
                     logger.debug(f"Updated dewpoint: {dewpoint}")
                 
+                # =========================================================================================== COLDROOM LIGHT PROCESS ===========================================================================================
                 # Light status and LED
                 if 'light' in coldroom:
                     # Update light LED
@@ -484,6 +522,7 @@ class MainApp(QtWidgets.QMainWindow):
                         light_led.setStyleSheet("background-color: yellow;" if coldroom['light'] else "background-color: black;") # LED is yellow when ON
                         logger.debug(f"Updated light LED: {'yellow' if coldroom['light'] else 'black'}")
                 
+                # =========================================================================================== COLDROOM DOOR PROCESS ===========================================================================================
                 # Door status and LED
                 if 'CmdDoorUnlock_Reff' in coldroom:
                     door_status = "OPEN" if coldroom['CmdDoorUnlock_Reff'] else "CLOSED"
@@ -492,7 +531,7 @@ class MainApp(QtWidgets.QMainWindow):
                         label.setText(door_status)
                         logger.debug(f"Updated door status: {door_status}")
                     
-                
+                # =========================================================================================== COLDROOM RUN PROCESS ===========================================================================================
                 # Update safe to open LED based on door_locked safety flag
                 safe_to_open_led = central.findChild(QtWidgets.QFrame, "safe_to_open_LED")
                 if safe_to_open_led:
@@ -500,6 +539,7 @@ class MainApp(QtWidgets.QMainWindow):
                     safe_to_open_led.setStyleSheet("background-color: red;" if is_locked else "background-color: green;")
                     logger.debug(f"Updated safe to open LED: {'red' if is_locked else 'green'} (door_locked={is_locked})")
                 
+                # =========================================================================================== COLDROOM RUN PROCESS ===========================================================================================
                 # Run status
                 if 'running' in coldroom:
                     label = central.findChild(QtWidgets.QLabel, "coldroom_run_state_label")
@@ -508,6 +548,7 @@ class MainApp(QtWidgets.QMainWindow):
                         label.setText(run_text)
                         logger.debug(f"Updated run state label: {run_text}")
                 
+                # =========================================================================================== COLDROOM DRY AIR PROCESS ===========================================================================================
                 # External dry air status
                 if 'dry_air_status' in coldroom:
                     # Update dry air LED
@@ -528,11 +569,16 @@ class MainApp(QtWidgets.QMainWindow):
                     label.setText(f"{co2_value:.1f}")
                     logger.debug(f"Updated CO2 level: {co2_value}")
             
+            #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+            # =========================================================================================== MARTA    ===========================================================================================
+            #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
             # Update MARTA CO2 Plant values
             if 'marta' in self.system.status:
                 marta = self.system.status['marta']
                 logger.debug(f"Updating MARTA UI with status: {marta}")
                 
+                # =========================================================================================== MARTA FSM STATE PROCESS ===========================================================================================
                 # Update FSM state
                 if 'fsm_state' in marta:
                     state_label = central.findChild(QtWidgets.QLabel, "marta_state_label")
@@ -556,6 +602,7 @@ class MainApp(QtWidgets.QMainWindow):
                         if alarm_frame:
                             alarm_frame.setStyleSheet("")
 
+                # =========================================================================================== MARTA TEMPERATURE PROCESS ===========================================================================================
                 # Temperature from TT05_CO2 (Supply)
                 if 'TT05_CO2' in marta:
                     label = central.findChild(QtWidgets.QLabel, "marta_temp_supply_value_label")
@@ -563,6 +610,13 @@ class MainApp(QtWidgets.QMainWindow):
                         temp_value = marta['TT05_CO2']
                         label.setText(f"{temp_value:.1f}")
                         logger.debug(f"Updated MARTA supply temperature: {temp_value}")
+                                # Temperature from TT06_CO2 (Return)
+                if 'TT06_CO2' in marta:
+                    label = central.findChild(QtWidgets.QLabel, "marta_temp_return_value_label")
+                    if label:
+                        temp_value = marta['TT06_CO2']
+                        label.setText(f"{temp_value:.1f}")
+                        logger.debug(f"Updated MARTA return temperature: {temp_value}")        
 
                 # Temperature setpoint
                 lineedit = central.findChild(QtWidgets.QLineEdit, "marta_temp_LE")
@@ -573,22 +627,25 @@ class MainApp(QtWidgets.QMainWindow):
                         pass
                     # Case 2: User has entered a value - use that value
                     elif temp_control_active and user_has_entered_value:
+                        marta_temp_lE_active_flag = True
                         temp_setpoint = lineedit.text()
                         lineedit.setText(str(temp_setpoint))
                         logger.debug(f"Updated MARTA temperature setpoint: {temp_setpoint}")
                     else:
+                        marta_temp_lE_active_flag = False
                         lineedit.clear()
                         logger.debug("Cleared MARTA temperature setpoint")
-
-
-                # Temperature from TT06_CO2 (Return)
-                if 'TT06_CO2' in marta:
-                    label = central.findChild(QtWidgets.QLabel, "marta_temp_return_value_label")
+                
+                #Temperature setpoint label
+                if 'temperature_setpoint' in marta and marta_temp_lE_active_flag == True:
+                    label = central.findChild(QtWidgets.QLabel, "marta_temp_set_point_label")
                     if label:
-                        temp_value = marta['TT06_CO2']
-                        label.setText(f"{temp_value:.1f}")
-                        logger.debug(f"Updated MARTA return temperature: {temp_value}")
+                        temp_setpoint = marta['temperature_setpoint']
+                        label.setText(f"{temp_setpoint:.1f}")
+                        logger.debug(f"Updated MARTA temperature setpoint: {temp_setpoint}")
 
+
+                # =========================================================================================== MARTA PRESSURE PROCESS ===========================================================================================
                 # Pressure from PT05_CO2 (Supply)
                 if 'PT05_CO2' in marta:
                     label = central.findChild(QtWidgets.QLabel, "marta_pressure_supply_value_label")
@@ -605,27 +662,62 @@ class MainApp(QtWidgets.QMainWindow):
                         label.setText(f"{pressure_value:.3f}")
                         logger.debug(f"Updated MARTA return pressure: {pressure_value}")
                 
+                # =========================================================================================== MARTA SPEED PROCESS ===========================================================================================
                 # Speed
-                if 'speed' in marta:
+                if 'LP_speed' in marta:
                     label = central.findChild(QtWidgets.QLabel, "marta_speed_value_label")
                     if label:
-                        speed_value = marta['speed']
+                        speed_value = marta['LP_speed']
                         label.setText(f"{speed_value:.1f}")
                         logger.debug(f"Updated MARTA speed: {speed_value}")
-                # Temperature setpoint
-                # spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_temp_spinbox")
-                # if spinbox:
-                #     temp_setpoint = marta.get('temperature_setpoint', spinbox.value())
-                #     spinbox.setValue(temp_setpoint)
-                #     logger.debug(f"Updated MARTA temperature setpoint: {temp_setpoint}")
+               
+                # Speed setpoint
+                if 'set_speed_setpoint' in marta:
+                    lineedit = central.findChild(QtWidgets.QLineEdit, "marta_speed_LE")
+                    if lineedit:
+                        user_has_entered_value = bool(lineedit.text().strip())
+                        # Case 1: User is actively typing - preserve their input
+                        if lineedit.hasFocus():
+                            pass
+                        # Case 2: User has entered a value - use that value
+                        elif speed_control_active and user_has_entered_value:
+                            marta_speed_lE_active_flag = True
+                            speed_value = lineedit.text()
+                            lineedit.setText(str(speed_value))
+                            logger.debug(f"Updated MARTA speed setpoint: {speed_value}")                    
+                        else:
+                            marta_speed_lE_active_flag = False
+                            lineedit.clear()
+                            logger.debug("Cleared MARTA speed setpoint")
+                
+                # Speed setpoint label
+                if 'speed_setpoint' in marta and marta_speed_lE_active_flag == True:
+                    label = central.findChild(QtWidgets.QLabel, "marta_speed_set_point_label")
+                    if label:
+                        speed_setpoint = marta['speed_setpoint']
+                        label.setText(f"{speed_setpoint:.1f}")
+                        logger.debug(f"Updated MARTA speed setpoint: {speed_setpoint}")
+
+                # =========================================================================================== MARTA FLOW PROCESS ===========================================================================================
+                
+                # Flow control LED
+                if 'set_flow_active' in marta:
+                    # Update Flow control LED
+                    ctrl_flow_led = central.findChild(QtWidgets.QFrame, "marta_flow_flag_LED")
+                    if ctrl_flow_led:
+                        ctrl_flow_led.setStyleSheet("background-color: green;" if marta['set_flow_active'] else "background-color: black;") # LED is green when ON
+                        logger.debug(f"Updated flow control LED: {'green' if marta['set_flow_active'] else 'black'}")  
 
                 # Flow setpoint (affects speed)
                 if 'flow_setpoint' in marta:
-                    # spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_flow_spinbox")
-                    # if spinbox:
-                    #     flow_value = marta['flow_setpoint']
-                    #     spinbox.setValue(flow_value)
-                    #     logger.debug(f"Updated MARTA flow setpoint: {flow_value}")
+                    label = central.findChild(QtWidgets.QLabel, "marta_flow_set_point_label")
+                    if label:
+                        flow_setpoint = marta['flow_setpoint']
+                        label.setText(f"{flow_setpoint:.1f}")
+                        logger.debug(f"Updated MARTA flow setpoint: {flow_setpoint}")   
+
+                # Flow setpoint lineedit
+                if 'set_flow_setpoint' in marta:
                     lineedit = central.findChild(QtWidgets.QLineEdit, "marta_flow_LE")
                     if lineedit:
                         user_has_entered_value = bool(lineedit.text().strip())
@@ -641,29 +733,7 @@ class MainApp(QtWidgets.QMainWindow):
                             lineedit.clear()
                             logger.debug("Cleared MARTA flow setpoint")
 
-
-                # Speed setpoint
-                if 'speed_setpoint' in marta:
-                    # spinbox = central.findChild(QtWidgets.QDoubleSpinBox, "marta_speed_spinbox")
-                    # if spinbox:
-                    #     speed_value = marta['speed_setpoint']
-                    #     spinbox.setValue(speed_value)
-                    #     logger.debug(f"Updated MARTA speed setpoint: {speed_value}")
-                    lineedit = central.findChild(QtWidgets.QLineEdit, "marta_speed_LE")
-                    if lineedit:
-                        user_has_entered_value = bool(lineedit.text().strip())
-                        # Case 1: User is actively typing - preserve their input
-                        if lineedit.hasFocus():
-                            pass
-                        # Case 2: User has entered a value - use that value
-                        elif speed_control_active and user_has_entered_value:
-                            speed_value = lineedit.text()
-                            lineedit.setText(str(speed_value))
-                            logger.debug(f"Updated MARTA speed setpoint: {speed_value}")                    
-                        else:
-                            lineedit.clear()
-                            logger.debug("Cleared MARTA speed setpoint")
-                
+                # =========================================================================================== MARTA FSM STATE PROCESS ===========================================================================================
                 # Update FSM state in status bar if available
                 if 'fsm_state' in marta:
                     self.statusBar().showMessage(f"MARTA State: {marta['fsm_state']}")
