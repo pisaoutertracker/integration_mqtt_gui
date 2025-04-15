@@ -34,7 +34,7 @@ class MartaColdRoomMQTTClient:
         logger.info(f"CO2 sensor topic: {self.TOPIC_CO2_SENSOR}")
         
         # Create single MQTT client
-        self._client = mqtt.Client(client_id="MARTA_COLDROOM_CLEANROOM")
+        self._client = mqtt.Client()
         self._client.on_connect = self.on_connect
         self._client.on_message = self.on_message
         
@@ -86,7 +86,7 @@ class MartaColdRoomMQTTClient:
             logger.info(f"Subscribed to Coldroom topic: {self.TOPIC_COLDROOM}")
             self._client.subscribe(self.TOPIC_CO2_SENSOR)
             logger.info(f"Subscribed to CO2 sensor topic: {self.TOPIC_CO2_SENSOR}")
-
+            self.publish_cmd("refresh","marta","")
         else:
             logger.error(f"Connection failed with result code {rc}")
 
@@ -148,6 +148,7 @@ class MartaColdRoomMQTTClient:
             target (str): Either 'marta' or 'coldroom' or 'cleanroom'
             payload: The command payload
         """
+        print("Publishing", command,target,payload)
         if target == 'marta': # Add MARTA topic
             topic = f"{self.TOPIC_BASE_MARTA}cmd/{command}"
         elif target == 'cleanroom': # Add cleanroom topic
@@ -156,13 +157,14 @@ class MartaColdRoomMQTTClient:
             topic = f"{self.TOPIC_BASE_COLDROOM}cmd/{command}"
         
         logger.info(f"Sending command '{command}' to {target} with payload: {payload}")
-        self._client.publish(topic, payload)
+        ret=self._client.publish(topic, payload)
+        print(ret)
 
     ### MARTA ###
 
     def handle_marta_status_message(self, payload):
         try:
-            self._marta_status = json.loads(payload)
+            self._marta_status.update(json.loads(payload))
             logger.debug(f"Parsed MARTA status: {self._marta_status}")
             self._system.update_status({"marta": self._marta_status})
         except Exception as e:
