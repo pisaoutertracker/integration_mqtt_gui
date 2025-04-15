@@ -195,8 +195,8 @@ class MainApp(QtWidgets.QMainWindow):
         if button:
             button.clicked.connect(self.toggle_coldroom_temp_control)
 
-        configure_line_edit("coldroom_temp_LE", "-20°C to 10°C")
-        configure_line_edit("coldroom_humidity_LE", "20% to 80%")
+        configure_line_edit("coldroom_temp_LE", "-30°C to 30°C")
+        configure_line_edit("coldroom_humidity_LE", "0% to 50%")
         # Temperature setpoint label
         label = self.marta_coldroom_tab.findChild(QtWidgets.QLabel, "coldroom_temp_set_point_label")
         if label:
@@ -255,13 +255,13 @@ class MainApp(QtWidgets.QMainWindow):
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "marta_temp_set_PB")
         if button:
             button.clicked.connect(self.set_marta_temperature)
-        configure_line_edit("marta_temp_LE", "-35°C to 25°C")  # Placeholder for temperature input
+        configure_line_edit("marta_temp_LE", "-30°C to 18°C")  # Placeholder for temperature input
 
         # Speed controls
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "marta_speed_set_PB")
         if button:
             button.clicked.connect(self.set_marta_speed)
-        configure_line_edit("marta_speed_LE", "0 to 6000 RPM")  # Placeholder for speed input
+        configure_line_edit("marta_speed_LE", "5000 to 6000 RPM")  # Placeholder for speed input
 
         # Flow controls
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "marta_flow_set_PB")
@@ -362,22 +362,22 @@ class MainApp(QtWidgets.QMainWindow):
         # Update validators to match placeholder ranges
         temp_lineedit_coldroom = self.marta_coldroom_tab.findChild(QtWidgets.QLineEdit, "coldroom_temp_LE")
         if temp_lineedit_coldroom:
-            temp_lineedit_coldroom.setValidator(QtGui.QDoubleValidator(-20, 10, 2))  # Matches placeholder
+            temp_lineedit_coldroom.setValidator(QtGui.QDoubleValidator(-30, 30, 2))  # Matches placeholder
 
         humid_lineedit_coldroom = self.marta_coldroom_tab.findChild(QtWidgets.QLineEdit, "coldroom_humidity_LE")
         if humid_lineedit_coldroom:
-            humid_lineedit_coldroom.setValidator(QtGui.QDoubleValidator(20, 80, 2))
+            humid_lineedit_coldroom.setValidator(QtGui.QDoubleValidator(0, 50, 2))
 
         # Add input validation for numeric fields
         temp_lineedit = self.marta_coldroom_tab.findChild(QtWidgets.QLineEdit, "marta_temp_LE")
         if temp_lineedit:
-            validator = QtGui.QDoubleValidator(-35, 25, 2)  # min, max, decimals
+            validator = QtGui.QDoubleValidator(-30, 18, 2)  # min, max, decimals
             temp_lineedit.setValidator(validator)
 
         # Add input validation for numeric fields
         speed_lineedit = self.marta_coldroom_tab.findChild(QtWidgets.QLineEdit, "marta_speed_LE")
         if speed_lineedit:
-            validator = QtGui.QDoubleValidator(0, 6000, 2)  # min, max, decimals
+            validator = QtGui.QDoubleValidator(5000, 6000, 0)  # min, max, decimals
             speed_lineedit.setValidator(validator)
 
         # Add input validation for numeric fields
@@ -1060,7 +1060,7 @@ class MainApp(QtWidgets.QMainWindow):
 
         try:
             value = float(lineedit.text())
-            if -35 <= value <= 25:  # Validate range from marta.py
+            if -30 <= value <= 18:  # Validate range from marta.py
                 if self.system._martacoldroom:
                     self.system._martacoldroom.set_temperature_setpoint(str(value))
                     # self.system._martacoldroom.publish_cmd("set_temperature", self.system._martacoldroom._marta_client, str(value))
@@ -1093,7 +1093,7 @@ class MainApp(QtWidgets.QMainWindow):
 
         try:
             value = float(lineedit.text())
-            if 0 <= value <= 6000:  # Validate range from marta.py
+            if 5000 <= value <= 6000:  # Validate range from marta.py
                 if self.system._martacoldroom:
                     self.system._martacoldroom.set_speed_setpoint(str(value))
                     # self.system._martacoldroom.publish_cmd("set_speed", self.system._martacoldroom._marta_client, str(value))
