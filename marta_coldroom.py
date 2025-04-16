@@ -137,6 +137,7 @@ class MartaColdRoomMQTTClient:
         if self._system.has_valid_status():
             self._system.safety_flags["door_locked"] = not check_dew_point(self._system.status)
             self._system.safety_flags["sleep"] = check_door_status(self._system.status)
+            self._system.safety_flags["door_safe"] = check_door_safe_to_open(self._system.status)
             logger.debug(f"Safety flags updated: {self._system.safety_flags}")
 
     def publish_cmd(self, command, target, payload):

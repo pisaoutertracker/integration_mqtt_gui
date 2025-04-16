@@ -7,6 +7,7 @@ from PyQt5.QtCore import Qt, QTimer
 from system import System
 from caenGUI import caenGUI
 from thermal_camera_tab import ThermalCameraTab
+from safety import check_door_safe_to_open, check_dew_point, check_hv_safe, check_light_status, check_door_status
 
 
 # Configure logging
@@ -160,6 +161,7 @@ class MainApp(QtWidgets.QMainWindow):
         self.settings_tab.coldroomTopicLineEdit.setText(self.system.settings["Coldroom"]["mqtt_topic"])
         self.settings_tab.co2SensorTopicLineEdit.setText(self.system.settings["Coldroom"]["co2_sensor_topic"])
         self.settings_tab.thermalCameraTopicLineEdit.setText(self.system.settings["ThermalCamera"]["mqtt_topic"])
+        self.settings_tab.cleanroomTopicLineEdit.setText(self.system.settings["Cleanroom"]["mqtt_topic"])
 
     def connect_signals(self):
         # Connect settings tab
@@ -598,16 +600,13 @@ class MainApp(QtWidgets.QMainWindow):
                         logger.debug(f"Updated door status: {door_status}")
 
                 # =========================================================================================== COLDROOM RUN PROCESS ===========================================================================================
-                # Update safe to open LED based on door_locked safety flag
+                # Update safe to open LED based on door safety check
                 safe_to_open_led = central.findChild(QtWidgets.QFrame, "safe_to_open_LED")
                 if safe_to_open_led:
-                    is_locked = self.system.safety_flags.get("door_locked", True)  # True means locked/unsafe
-                    safe_to_open_led.setStyleSheet(
-                        "background-color: red;" if is_locked else "background-color: green;"
-                    )
-                    logger.debug(
-                        f"Updated safe to open LED: {'red' if is_locked else 'green'} (door_locked={is_locked})"
-                    )
+                    is_safe = check_door_safe_to_open(self.system.status)
+                    print(is_safe)
+                    safe_to_open_led.setStyleSheet("background-color: green;" if is_safe else "background-color: red;")
+                    logger.debug(f"Updated safe to open LED: {'green' if is_safe else 'red'} (is_safe={is_safe})")
 
                 # =========================================================================================== COLDROOM RUN PROCESS ===========================================================================================
                 # Run status
@@ -624,9 +623,7 @@ class MainApp(QtWidgets.QMainWindow):
                     # Update dry air LED
                     dry_air_led = central.findChild(QtWidgets.QFrame, "dryair_LED")
                     if dry_air_led:
-                        dry_air_led.setStyleSheet(
-                            "background-color: green;" if coldroom["dry_air_status"] else "background-color: red;"
-                        )
+                        dry_air_led.setStyleSheet("background-color: green;" if coldroom["dry_air_status"] else "background-color: red;")
                         logger.debug(f"Updated dry air LED: {'green' if coldroom['dry_air_status'] else 'red'}")
 
             # Update CO2 sensor data
@@ -822,7 +819,7 @@ class MainApp(QtWidgets.QMainWindow):
         central = self.marta_coldroom_tab
         # Check if temperature control is enabled
         coldroom = self.system.status.get("coldroom", {})
-        if not coldroom["ch_temperature"].get("status", False):
+        if "ch_temperature" not in coldroom or not coldroom.get("ch_temperature", {}).get("status", False):
             msg = "Temperature control is not enabled. Please enable temperature control first."
             self.statusBar().showMessage(msg)
             logger.warning(msg)
@@ -837,13 +834,21 @@ class MainApp(QtWidgets.QMainWindow):
 
         try:
             value = float(lineedit.text())
-            if self.system._martacoldroom:
-                self.system._martacoldroom.set_temperature(str(value))
-                msg = f"Set coldroom temperature to {value}°C"
-                self.statusBar().showMessage(msg)
-                logger.info(msg)
+            # Validate temperature range
+            if -30 <= value <= 30:  # Temperature range from UI validator
+                if self.system._martacoldroom:
+                    # Use publish_cmd directly with the correct client and command
+                    self.system._martacoldroom.set_temperature("set_temperature", "coldroom", str(value))
+                    # self.system._martacoldroom.publish_cmd("set_temperature", "coldroom", str(value))
+                    msg = f"Set coldroom temperature to {value}°C"
+                    self.statusBar().showMessage(msg)
+                    logger.info(msg)
+                else:
+                    msg = "MARTA Cold Room client not initialized"
+                    self.statusBar().showMessage(msg)
+                    logger.error(msg)
             else:
-                msg = "MARTA Cold Room client not initialized"
+                msg = "Temperature must be between -30°C and 30°C"
                 self.statusBar().showMessage(msg)
                 logger.error(msg)
         except ValueError:
@@ -855,7 +860,7 @@ class MainApp(QtWidgets.QMainWindow):
         central = self.marta_coldroom_tab
         # Check if humidity control is enabled
         coldroom = self.system.status.get("coldroom", {})
-        if not coldroom["ch_humidity"].get("status", False):
+        if "ch_humidity" not in coldroom or not coldroom.get("ch_humidity", {}).get("status", False):
             msg = "Humidity control is not enabled. Please enable humidity control first."
             self.statusBar().showMessage(msg)
             logger.warning(msg)
@@ -870,8 +875,11 @@ class MainApp(QtWidgets.QMainWindow):
 
         try:
             value = float(lineedit.text())
-            if self.system._martacoldroom:
-                self.system._martacoldroom.set_humidity(str(value))
+            # Validate humidity range
+            if 0 <= value <= 50:  # Humidity range from UI validator
+                if self.system._martacoldroom:
+                    self.system._martacoldroom.set_humidity("set_humidity", "coldroom", str(value))
+                    # self.system._martacoldroom.publish_cmd("set_humidity", "coldroom", str(value))
                 msg = f"Set coldroom humidity to {value}%"
                 self.statusBar().showMessage(msg)
                 logger.info(msg)
@@ -938,7 +946,7 @@ class MainApp(QtWidgets.QMainWindow):
 
     def toggle_coldroom_dry(self):
         coldroom = self.system.status.get("coldroom", {})
-        current_state = coldroom.get("external_dry_air", 0)
+        current_state = coldroom.get("dry_air_status", 0)
         new_state = 0 if current_state else 1
         if self.system._martacoldroom:
             self.system._martacoldroom.control_external_dry_air(str(new_state))
@@ -970,7 +978,8 @@ class MainApp(QtWidgets.QMainWindow):
 
     def toggle_coldroom_temp_control(self):
         coldroom = self.system.status.get("coldroom", {})
-        current_state = coldroom.get("ch_temperature_status", False)
+        # current_state = coldroom.get("ch_temperature_status", False)
+        current_state = bool(coldroom["ch_temperature"]["status"])
         new_state = not current_state  # Toggle the state
 
         if self.system._martacoldroom:
@@ -985,8 +994,8 @@ class MainApp(QtWidgets.QMainWindow):
 
     def toggle_coldroom_humidity_control(self):
         coldroom = self.system.status.get("coldroom", {})
-        current_state = coldroom.get("ch_humidity_status", False)
-        new_state = not current_state  # Toggle the state
+        current_state = bool(coldroom["ch_humidity"]["status"])
+        new_state = not current_state  # Toggle the state   
 
         if self.system._martacoldroom:
             self.system._martacoldroom.control_humidity(str(int(new_state)))
