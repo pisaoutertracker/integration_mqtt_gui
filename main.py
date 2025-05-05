@@ -979,11 +979,13 @@ class MainApp(QtWidgets.QMainWindow):
     def toggle_coldroom_temp_control(self):
         coldroom = self.system.status.get("coldroom", {})
         # current_state = coldroom.get("ch_temperature_status", False)
-        current_state = bool(coldroom["ch_temperature"]["status"])
+        # current_state = bool(coldroom["ch_temperature"]["status"])
+        current_state = bool(coldroom.get("ch_temperature", {}).get("status", False))
         new_state = not current_state  # Toggle the state
 
         if self.system._martacoldroom:
-            self.system._martacoldroom.control_temperature(str(int(new_state)))
+            value = 2**7 if new_state else 0
+            self.system._martacoldroom.control_temperature(str(int(value)))
             msg = f"Temperature control {'enabled' if new_state else 'disabled'}"
             self.statusBar().showMessage(msg)
             logger.info(msg)
@@ -994,11 +996,13 @@ class MainApp(QtWidgets.QMainWindow):
 
     def toggle_coldroom_humidity_control(self):
         coldroom = self.system.status.get("coldroom", {})
-        current_state = bool(coldroom["ch_humidity"]["status"])
+        # current_state = bool(coldroom["ch_humidity"]["status"])
+        current_state = bool(coldroom.get("ch_humidity", {}).get("status", False))
         new_state = not current_state  # Toggle the state   
 
         if self.system._martacoldroom:
-            self.system._martacoldroom.control_humidity(str(int(new_state)))
+            value = 2**7 if new_state else 0
+            self.system._martacoldroom.control_humidity(str(int(value)))
             msg = f"Humidity control {'enabled' if new_state else 'disabled'}"
             self.statusBar().showMessage(msg)
             logger.info(msg)
