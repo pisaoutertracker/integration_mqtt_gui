@@ -252,6 +252,11 @@ class MainApp(QtWidgets.QMainWindow):
         if button:
             button.clicked.connect(self.toggle_coldroom_run)
 
+        # Reset alarms
+        button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "coldroom_reset_alarms_PB")
+        if button:
+            button.clicked.connect(self.reset_coldroom_alarms)
+
         # MARTA CO2 Plant controls
         # Temperature controls
         button = self.marta_coldroom_tab.findChild(QtWidgets.QPushButton, "marta_temp_set_PB")
@@ -640,6 +645,14 @@ class MainApp(QtWidgets.QMainWindow):
                     label.setText(f"{co2_value:.1f}")
                     logger.debug(f"Updated CO2 level: {co2_value}")
 
+            # check alarms
+            if "alarm" in self.system.status:
+                label = central.findChild(QtWidgets.QLabel, "alarm_value")
+                if label:
+                    alarm_value = self.system.status.get("alarm", "None")
+                    label.setText(f"{alarm_value}")
+                    logger.debug(f"Updated alarm value: {alarm_value}")
+
             # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
             # =========================================================================================== MARTA    ===========================================================================================
             # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
@@ -1008,6 +1021,13 @@ class MainApp(QtWidgets.QMainWindow):
             msg = "MARTA Cold Room client not initialized"
             self.statusBar().showMessage(msg)
             logger.error(msg)
+
+    def reset_coldroom_alarms(self):
+        if self.system._martacoldroom:
+            self.system._martacoldroom.reset_alarms(1)
+            msg = "Reset coldroom alarms"
+            self.statusBar().showMessage(msg)
+            logger.info(msg)
 
     # MARTA CO2 Plant control methods
 
