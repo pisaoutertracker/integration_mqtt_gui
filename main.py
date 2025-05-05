@@ -623,7 +623,9 @@ class MainApp(QtWidgets.QMainWindow):
                     # Update dry air LED
                     dry_air_led = central.findChild(QtWidgets.QFrame, "dryair_LED")
                     if dry_air_led:
-                        dry_air_led.setStyleSheet("background-color: green;" if coldroom["dry_air_status"] else "background-color: red;")
+                        dry_air_led.setStyleSheet(
+                            "background-color: green;" if coldroom["dry_air_status"] else "background-color: red;"
+                        )
                         logger.debug(f"Updated dry air LED: {'green' if coldroom['dry_air_status'] else 'red'}")
 
             # Update CO2 sensor data
@@ -838,8 +840,7 @@ class MainApp(QtWidgets.QMainWindow):
             if -30 <= value <= 30:  # Temperature range from UI validator
                 if self.system._martacoldroom:
                     # Use publish_cmd directly with the correct client and command
-                    self.system._martacoldroom.set_temperature("set_temperature", "coldroom", str(value))
-                    # self.system._martacoldroom.publish_cmd("set_temperature", "coldroom", str(value))
+                    self.system._martacoldroom.set_temperature(value)
                     msg = f"Set coldroom temperature to {value}°C"
                     self.statusBar().showMessage(msg)
                     logger.info(msg)
@@ -878,8 +879,7 @@ class MainApp(QtWidgets.QMainWindow):
             # Validate humidity range
             if 0 <= value <= 50:  # Humidity range from UI validator
                 if self.system._martacoldroom:
-                    self.system._martacoldroom.set_humidity("set_humidity", "coldroom", str(value))
-                    # self.system._martacoldroom.publish_cmd("set_humidity", "coldroom", str(value))
+                    self.system._martacoldroom.set_humidity(value)
                 msg = f"Set coldroom humidity to {value}%"
                 self.statusBar().showMessage(msg)
                 logger.info(msg)
@@ -984,8 +984,7 @@ class MainApp(QtWidgets.QMainWindow):
         new_state = not current_state  # Toggle the state
 
         if self.system._martacoldroom:
-            value = 2**7 if new_state else 0
-            self.system._martacoldroom.control_temperature(str(int(value)))
+            self.system._martacoldroom.control_temperature(str(int(new_state)))
             msg = f"Temperature control {'enabled' if new_state else 'disabled'}"
             self.statusBar().showMessage(msg)
             logger.info(msg)
@@ -998,11 +997,10 @@ class MainApp(QtWidgets.QMainWindow):
         coldroom = self.system.status.get("coldroom", {})
         # current_state = bool(coldroom["ch_humidity"]["status"])
         current_state = bool(coldroom.get("ch_humidity", {}).get("status", False))
-        new_state = not current_state  # Toggle the state   
+        new_state = not current_state  # Toggle the state
 
         if self.system._martacoldroom:
-            value = 2**7 if new_state else 0
-            self.system._martacoldroom.control_humidity(str(int(value)))
+            self.system._martacoldroom.control_humidity(str(int(new_state)))
             msg = f"Humidity control {'enabled' if new_state else 'disabled'}"
             self.statusBar().showMessage(msg)
             logger.info(msg)
